@@ -1,0 +1,19 @@
+{
+  "course": "数据结构",
+  "chapters": [
+    {
+      "id": 2,
+      "label": "第2章 线性表",
+      "shortLabel": "第2章",
+      "file": "chapter_2_questions.md",
+      "description": ""
+    },
+    {
+      "id": 3,
+      "label": "第3章 栈和队列",
+      "shortLabel": "第3章",
+      "file": "ch3_questions.md",
+      "description": "本题库围绕栈在表达式求值中的应用、队列的基本操作以及舞伴问题等经典案例设计，适合学习完本章内容后的基础巩固与能力提升。"
+    }
+  ]
+}
