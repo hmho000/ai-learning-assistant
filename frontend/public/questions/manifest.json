@@ -2,6 +2,13 @@
   "course": "数据结构",
   "chapters": [
     {
+      "id": 1,
+      "label": "第1章 绪论",
+      "shortLabel": "第1章",
+      "file": "ch1_questions.md",
+      "description": "本题库围绕算法的基本特性、评价标准和时间复杂度分析等核心概念设计，适合作为本章学习后的巩固与自测。"
+    },
+    {
       "id": 2,
       "label": "第2章 线性表",
       "shortLabel": "第2章",
