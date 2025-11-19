@@ -30,6 +30,7 @@ DEFAULT_OUTPUT_PATH = Path("experiments/output/chapter_2_questions.json")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEFAULT_MODEL = "deepseek-chat"
 DEFAULT_API_KEY = "sk-3242989c595b4e0e9798190133d80bf5"
+MIN_QUESTIONS_PER_TYPE = 5  # 每种题型最少题目数量
 
 # 用于检测题干中是否包含算法/例题/图表编号的正则表达式
 ALGO_REF_PATTERN = re.compile(
@@ -53,6 +54,7 @@ def build_prompt(
     chapter_text: str,
     chapter_id: Optional[int] = None,
     chapter_title: Optional[str] = None,
+    is_supplement: bool = False,
 ) -> str:
     """
     构造给 DeepSeek 的用户提示词。
@@ -76,13 +78,17 @@ def build_prompt(
             "\n\n如果没有提供章节编号和标题，请根据文本内容自行判断并填写 meta 中的章节信息。\n"
         )
 
+    supplement_note = ""
+    if is_supplement:
+        supplement_note = "\n\n注意：这是补充出题请求，请确保新生成的题目与之前已生成的题目不重复，且同样遵循所有出题质量要求。\n"
+
     prompt = f"""
 你是一名中国大学《数据结构》课程的教师，现在要根据下面的教材内容出题。
 
 【教材内容开始】
 {chapter_text}
 【教材内容结束】
-{chapter_context}
+{chapter_context}{supplement_note}
 请你根据这部分内容，面向 **大二计算机专业学生**，生成：
 
 1. 章节元数据（meta）：包括章节编号、章节标题、题库标题和描述
@@ -246,16 +252,105 @@ def filter_questions(payload: Dict[str, Any]) -> Dict[str, Any]:
     payload["fill_in_blank"] = filtered_fb
 
     # 检查过滤后题目数量
-    if len(filtered_mc) < 5:
+    if len(filtered_mc) < MIN_QUESTIONS_PER_TYPE:
         print(
-            f"[警告] 选择题数量少于 5 道（当前 {len(filtered_mc)} 道），可能是过滤掉过多编号题导致的。"
+            f"[警告] 选择题数量少于 {MIN_QUESTIONS_PER_TYPE} 道（当前 {len(filtered_mc)} 道），可能是过滤掉过多编号题导致的。"
         )
-    if len(filtered_fb) < 5:
+    if len(filtered_fb) < MIN_QUESTIONS_PER_TYPE:
         print(
-            f"[警告] 填空题数量少于 5 道（当前 {len(filtered_fb)} 道），可能是过滤掉过多编号题导致的。"
+            f"[警告] 填空题数量少于 {MIN_QUESTIONS_PER_TYPE} 道（当前 {len(filtered_fb)} 道），可能是过滤掉过多编号题导致的。"
         )
 
     return payload
+
+
+def supplement_questions(
+    chapter_text: str,
+    chapter_id: Optional[int],
+    chapter_title: Optional[str],
+    existing_questions: Dict[str, Any],
+    api_key: str,
+    model: str,
+    temperature: float = 0.4,
+) -> Dict[str, Any]:
+    """
+    当题目数量不足时，补充生成题目。
+
+    Args:
+        chapter_text: 章节文本
+        chapter_id: 章节编号
+        chapter_title: 章节标题
+        existing_questions: 已生成的题目（用于去重）
+        api_key: API 密钥
+        model: 模型名称
+        temperature: 采样温度
+
+    Returns:
+        补充的题目数据（只包含 multiple_choice 和 fill_in_blank）
+    """
+    mc_count = len(existing_questions.get("multiple_choice", []))
+    fb_count = len(existing_questions.get("fill_in_blank", []))
+
+    need_mc = max(0, MIN_QUESTIONS_PER_TYPE - mc_count)
+    need_fb = max(0, MIN_QUESTIONS_PER_TYPE - fb_count)
+
+    if need_mc == 0 and need_fb == 0:
+        return {"multiple_choice": [], "fill_in_blank": []}
+
+    print(f"[补题] 需要补充 {need_mc} 道选择题、{need_fb} 道填空题。")
+
+    # 构建补充出题的 prompt
+    supplement_prompt = build_prompt(
+        chapter_text, chapter_id, chapter_title, is_supplement=True
+    )
+    # 修改 prompt 中的题目数量要求
+    supplement_prompt = supplement_prompt.replace(
+        "2. 5 道单选题（multiple_choice）\n3. 5 道填空题（fill_in_blank）",
+        f"2. {need_mc} 道单选题（multiple_choice）\n3. {need_fb} 道填空题（fill_in_blank）",
+    )
+
+    raw_content = call_deepseek(api_key, model, supplement_prompt, temperature)
+    supplement_data = parse_json_only(raw_content)
+    # 对补充的题目也进行过滤
+    supplement_data = filter_questions(supplement_data)
+
+    # 合并题目（保留原有的 meta）
+    existing_mc = existing_questions.get("multiple_choice", [])
+    existing_fb = existing_questions.get("fill_in_blank", [])
+
+    new_mc = supplement_data.get("multiple_choice", [])
+    new_fb = supplement_data.get("fill_in_blank", [])
+
+    # 重新编号，确保 ID 连续
+    max_mc_id = max([q.get("id", 0) for q in existing_mc], default=0)
+    max_fb_id = max([q.get("id", 0) for q in existing_fb], default=0)
+
+    for idx, q in enumerate(new_mc):
+        q["id"] = max_mc_id + idx + 1
+    for idx, q in enumerate(new_fb):
+        q["id"] = max_fb_id + idx + 1
+
+    return {
+        "multiple_choice": new_mc,
+        "fill_in_blank": new_fb,
+    }
+
+
+def parse_json_only(raw_content: str) -> Dict[str, Any]:
+    """
+    仅解析 JSON，不进行过滤和校验（用于内部调用）。
+    """
+    text = raw_content.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        text = text.replace("json\n", "").replace("JSON\n", "")
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"解析 JSON 失败，请手动检查模型输出。\n错误：{e}\n原始内容：\n{text}"
+        ) from e
 
 
 def parse_questions_json(raw_content: str) -> Dict[str, Any]:
@@ -264,22 +359,7 @@ def parse_questions_json(raw_content: str) -> Dict[str, Any]:
     如果解析失败，则抛出异常，方便你手动检查原始输出。
     兼容 meta 字段，如果缺失则只打印警告。
     """
-    # 有些模型可能会在前后混入奇怪字符，这里简单做一次 strip
-    text = raw_content.strip()
-
-    # 防止模型不听话输出 ```json ... ``` 这种格式
-    if text.startswith("```"):
-        # 粗暴去掉代码块包裹
-        text = text.strip("`")
-        # 如果里面带有 "json\n" 之类前缀，继续处理
-        text = text.replace("json\n", "").replace("JSON\n", "")
-
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise ValueError(
-            f"解析 JSON 失败，请手动检查模型输出。\n错误：{e}\n原始内容：\n{text}"
-        ) from e
+    data = parse_json_only(raw_content)
 
     # 结构校验
     if "multiple_choice" not in data or "fill_in_blank" not in data:
@@ -376,6 +456,32 @@ def main() -> None:
         temperature=args.temperature,
     )
     questions = parse_questions_json(raw_content)
+
+    # 检查题目数量，如果不足则补充
+    mc_count = len(questions.get("multiple_choice", []))
+    fb_count = len(questions.get("fill_in_blank", []))
+
+    if mc_count < MIN_QUESTIONS_PER_TYPE or fb_count < MIN_QUESTIONS_PER_TYPE:
+        print(f"[补题] 检测到题目数量不足，开始补充生成...")
+        supplement = supplement_questions(
+            chapter_text=chapter_text,
+            chapter_id=args.chapter_id,
+            chapter_title=args.chapter_title,
+            existing_questions=questions,
+            api_key=api_key,
+            model=args.model,
+            temperature=args.temperature,
+        )
+
+        # 合并补充的题目
+        questions["multiple_choice"].extend(supplement.get("multiple_choice", []))
+        questions["fill_in_blank"].extend(supplement.get("fill_in_blank", []))
+
+        print(
+            f"[补题] 补充完成，当前有 {len(questions['multiple_choice'])} 道选择题、"
+            f"{len(questions['fill_in_blank'])} 道填空题。"
+        )
+
     save_output_json(questions, output_path)
 
 
