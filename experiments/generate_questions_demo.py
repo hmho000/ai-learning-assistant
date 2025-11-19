@@ -19,6 +19,7 @@ generate_questions_demo.py
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,6 +30,15 @@ DEFAULT_OUTPUT_PATH = Path("experiments/output/chapter_2_questions.json")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEFAULT_MODEL = "deepseek-chat"
 DEFAULT_API_KEY = "sk-3242989c595b4e0e9798190133d80bf5"
+
+# 用于检测题干中是否包含算法/例题/图表编号的正则表达式
+ALGO_REF_PATTERN = re.compile(
+    r"(算法\s*\d+(\.\d+)?)|"
+    r"(例\s*\d+(\.\d+)?)|"
+    r"(案例\s*\d+(\.\d+)?)|"
+    r"(图\s*\d+(\.\d+)?)|"
+    r"(表\s*\d+(\.\d+)?)"
+)
 
 
 def load_text(path: Path) -> str:
@@ -84,6 +94,16 @@ def build_prompt(
 - 每道题附带简明扼要的解析（explanation），突出考察的知识点。
 - 难度控制在基础～中等。
 - 所有输出 **必须是合法 JSON**，不要包含任何多余说明文字。
+
+出题质量要求（重要）：
+- 出题必须**自包含**，不要依赖教材中的"算法编号、例题编号、图表编号"等信息。
+  - **禁止**在题干中出现诸如"算法3.22""算法 3.21""例3.2""案例3.4""图3.5""表3.2"等表述。
+  - 如果必须引用某个算法，请改写成"栈的算符优先表达式求值算法""舞伴配对问题中的队列算法"等，使用**概念名称**而不是编号。
+  - 如果某个算法或例题在文本中只被略微提及（只有编号，没有完整解释），**不要**针对它出题。
+- 尽量覆盖本章节的**多个知识点**，不要把所有题目都集中在同一个算法或例题上。
+  - 建议至少覆盖 4~6 个不同的核心概念（例如：栈的基本操作、表达式求值、括号匹配、舞伴问题、时间/空间复杂度等）。
+  - 同一个知识点不要出超过 2 道题，出多道题时要换角度（比如一题考概念，一题考应用）。
+- 所有题目都要**可以由本段文本直接推理或查找到答案**，不要考"只在别处出现、当前文本里没有的信息"。
 
 JSON 输出格式严格如下（字段名不要改）：
 
@@ -175,6 +195,69 @@ def call_deepseek(
     return content
 
 
+def is_bad_referenced_question(q: Dict[str, Any]) -> bool:
+    """
+    判断题干是否严重依赖"算法/例/图/表编号"，属于不推荐保留的题目。
+    当前策略：只要题干里出现类似"算法3.22""例3.2""图3.5"之类就标记为不合格。
+
+    Args:
+        q: 题目字典，包含 question 字段
+
+    Returns:
+        True 表示题目不合格（包含编号引用），False 表示合格
+    """
+    text = (q.get("question") or "").strip()
+    if not text:
+        return True
+    return bool(ALGO_REF_PATTERN.search(text))
+
+
+def filter_questions(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    对模型返回的题目做一次简单质量过滤：
+    - 删除严重依赖编号的题目（算法x.x / 例x.x / 图x.x / 表x.x）
+
+    未来可以在此处增加更多规则：
+    - 统计题干中重复出现的核心词，限制单个关键词的题目数量不超过 2 道
+    - 对题干文本做简单归一化（去标点、小写），避免几乎一模一样的题目重复出现
+    - 根据 meta 中的章节标题，提示模型尽量覆盖本章多个小节
+
+    Args:
+        payload: 包含 multiple_choice 和 fill_in_blank 的完整 JSON 数据
+
+    Returns:
+        过滤后的数据（原地修改并返回）
+    """
+    mc: List[Dict[str, Any]] = payload.get("multiple_choice") or []
+    fb: List[Dict[str, Any]] = payload.get("fill_in_blank") or []
+
+    filtered_mc = [q for q in mc if not is_bad_referenced_question(q)]
+    filtered_fb = [q for q in fb if not is_bad_referenced_question(q)]
+
+    removed_mc = len(mc) - len(filtered_mc)
+    removed_fb = len(fb) - len(filtered_fb)
+
+    if removed_mc or removed_fb:
+        print(
+            f"[filter] 移除了 {removed_mc} 道选择题、{removed_fb} 道填空题（含算法/例/图/表编号）。"
+        )
+
+    payload["multiple_choice"] = filtered_mc
+    payload["fill_in_blank"] = filtered_fb
+
+    # 检查过滤后题目数量
+    if len(filtered_mc) < 5:
+        print(
+            f"[警告] 选择题数量少于 5 道（当前 {len(filtered_mc)} 道），可能是过滤掉过多编号题导致的。"
+        )
+    if len(filtered_fb) < 5:
+        print(
+            f"[警告] 填空题数量少于 5 道（当前 {len(filtered_fb)} 道），可能是过滤掉过多编号题导致的。"
+        )
+
+    return payload
+
+
 def parse_questions_json(raw_content: str) -> Dict[str, Any]:
     """
     尝试把模型输出解析成 JSON。
@@ -211,6 +294,9 @@ def parse_questions_json(raw_content: str) -> Dict[str, Any]:
         missing_fields = [f for f in required_meta_fields if f not in meta]
         if missing_fields:
             print(f"警告：meta 中缺少以下字段：{', '.join(missing_fields)}")
+
+    # 过滤掉包含算法/例题/图表编号的题目
+    data = filter_questions(data)
 
     return data
 
