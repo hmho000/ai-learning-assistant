@@ -32,6 +32,15 @@ npm run dev
 
 注意：脚本会自动将生成的 Markdown 文件复制到 frontend/public/questions/ 目录，
 无需手动复制。manifest.json 中的 file 字段会自动使用正确的文件名。
+
+整本书处理示例：
+```powershell
+# 处理整本书所有章节（假设共10章）
+python .\scripts\run_all.py `
+  --chapters "1,2,3,4,5,6,7,8,9,10" `
+  --chapter-titles "绪论,线性表,栈和队列,串,数组和广义表,树和二叉树,图,查找,排序,文件" `
+  --skip-existing
+```
 """
 
 import argparse
