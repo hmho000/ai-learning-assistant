@@ -1,0 +1,102 @@
+{
+  "meta": {
+    "chapter_index": 2,
+    "chapter_title": "第2章 线性表",
+    "quiz_title": "第2章·线性表——顺序表与链表综合练习",
+    "quiz_description": "本题库围绕线性表的基本概念、顺序表与链表的表示与操作以及有序表合并等内容设计，适合作为本章学习后的巩固与自测。"
+  },
+  "multiple_choice": [
+    {
+      "id": 1,
+      "question": "在顺序有序表合并算法MergeList_Sq中，当两个表LA和LB的长度分别为m和n时，该算法的时间复杂度是多少？",
+      "options": [
+        "A. O(m*n)",
+        "B. O(m+n)",
+        "C. O(log(m+n))",
+        "D. O(max(m,n))"
+      ],
+      "answer": "B",
+      "explanation": "根据教材算法分析，循环最多执行m+n次，因此时间复杂度为O(m+n)。"
+    },
+    {
+      "id": 2,
+      "question": "在链式有序表合并算法MergeList_L中，空间复杂度是多少？",
+      "options": [
+        "A. O(m+n)",
+        "B. O(1)",
+        "C. O(n)",
+        "D. O(m)"
+      ],
+      "answer": "B",
+      "explanation": "链式合并不需要额外开辟存储空间，直接重新链接结点，空间复杂度为O(1)。"
+    },
+    {
+      "id": 3,
+      "question": "在顺序有序表合并过程中，当*pa == *pb时，算法2.16的处理方式是什么？",
+      "options": [
+        "A. 只插入LA的元素",
+        "B. 只插入LB的元素",
+        "C. 同时插入两个元素",
+        "D. 根据具体实现可能不同"
+      ],
+      "answer": "C",
+      "explanation": "算法2.16在*pa<=*pb时插入*pa，否则插入*pb，相等时插入*pa（属于<=情况）。"
+    },
+    {
+      "id": 4,
+      "question": "链式有序表合并算法中，LC的头结点来自哪里？",
+      "options": [
+        "A. 新创建的头结点",
+        "B. LA的头结点",
+        "C. LB的头结点",
+        "D. 随机选择"
+      ],
+      "answer": "B",
+      "explanation": "算法描述中明确说明'LC=LA'，即使用LA的头结点作为LC的头结点。"
+    },
+    {
+      "id": 5,
+      "question": "在顺序有序表合并算法中，如果修改算法使得当*pa == *pb时只插入其中一个元素，则合并后的表长会怎样？",
+      "options": [
+        "A. 等于m+n",
+        "B. 小于m+n",
+        "C. 大于m+n",
+        "D. 等于max(m,n)"
+      ],
+      "answer": "B",
+      "explanation": "当存在相等元素时只插入一个，总元素数量会减少，因此表长小于m+n。"
+    }
+  ],
+  "fill_in_blank": [
+    {
+      "id": 1,
+      "question": "在顺序有序表合并算法中，需要为合并后的新表LC__________分配一个数组空间。",
+      "answer": "动态",
+      "explanation": "算法中使用'new ElemType[LC.length]'动态分配数组空间。"
+    },
+    {
+      "id": 2,
+      "question": "链式有序表合并时，当其中一个表变空后，需要将另一个表的__________链接到pc所指结点之后。",
+      "answer": "剩余段",
+      "explanation": "算法步骤⑤明确指出'将非空表的剩余段插入pc所指结点之后'。"
+    },
+    {
+      "id": 3,
+      "question": "在顺序有序表合并算法中，指针pa_last指向LA的__________元素。",
+      "answer": "最后一个",
+      "explanation": "代码注释说明'指针pa_last指向LA的最后一个元素'。"
+    },
+    {
+      "id": 4,
+      "question": "链式有序表合并完成后，需要释放__________的头结点。",
+      "answer": "LB",
+      "explanation": "算法步骤⑥明确要求'释放LB的头结点'。"
+    },
+    {
+      "id": 5,
+      "question": "顺序有序表合并算法的空间复杂度为__________。",
+      "answer": "O(m+n)",
+      "explanation": "算法分析指出需要开辟新的辅助空间，空间复杂度为O(m+n)。"
+    }
+  ]
+}
