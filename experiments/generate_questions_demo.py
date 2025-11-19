@@ -3,31 +3,31 @@ generate_questions_demo.py
 --------------------------
 
 根据教材章节文本，调用 DeepSeek Chat API 自动生成选择题和填空题。
+同时自动生成章节元数据（meta），包括章节标题、题库标题和描述。
 
 用法示例：
     python experiments/generate_questions_demo.py \
-        --input experiments/output/chapter_2.txt \
+        --input experiments/output/ch2_clean.txt \
         --output experiments/output/chapter_2_questions.json \
-        --model deepseek-chat
+        --chapter-id 2 \
+        --chapter-title "第2章 线性表"
 
 环境要求：
     pip install requests
-    并在环境变量中设置：
-        DEEPSEEK_API_KEY=你的密钥
 """
 
 import argparse
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import requests
 
 DEFAULT_INPUT_PATH = Path("experiments/output/chapter_2.txt")
 DEFAULT_OUTPUT_PATH = Path("experiments/output/chapter_2_questions.json")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
-DEFAULT_MODEL = "deepseek-chat"  # 你也可以改成 deepseek-reasoner 等
+DEFAULT_MODEL = "deepseek-chat"
 DEFAULT_API_KEY = "sk-3242989c595b4e0e9798190133d80bf5"
 
 
@@ -39,22 +39,45 @@ def load_text(path: Path) -> str:
     return text
 
 
-def build_prompt(chapter_text: str) -> str:
+def build_prompt(
+    chapter_text: str,
+    chapter_id: Optional[int] = None,
+    chapter_title: Optional[str] = None,
+) -> str:
     """
     构造给 DeepSeek 的用户提示词。
-    要求它严格输出 JSON，方便后续解析。
+    要求它严格输出 JSON，包含 meta 元数据和题目。
+
+    Args:
+        chapter_text: 章节文本内容
+        chapter_id: 可选的章节编号（用于提示模型）
+        chapter_title: 可选的章节标题（用于提示模型）
     """
+    chapter_context = ""
+    if chapter_id is not None or chapter_title is not None:
+        parts = []
+        if chapter_id is not None:
+            parts.append(f"第 {chapter_id} 章")
+        if chapter_title:
+            parts.append(f"《{chapter_title}》")
+        chapter_context = f"\n\n本题库对应教材中的{' '.join(parts)}。\n"
+    else:
+        chapter_context = (
+            "\n\n如果没有提供章节编号和标题，请根据文本内容自行判断并填写 meta 中的章节信息。\n"
+        )
+
     prompt = f"""
 你是一名中国大学《数据结构》课程的教师，现在要根据下面的教材内容出题。
 
 【教材内容开始】
 {chapter_text}
 【教材内容结束】
-
+{chapter_context}
 请你根据这部分内容，面向 **大二计算机专业学生**，生成：
 
-1. 5 道单选题（multiple_choice）
-2. 5 道填空题（fill_in_blank）
+1. 章节元数据（meta）：包括章节编号、章节标题、题库标题和描述
+2. 5 道单选题（multiple_choice）
+3. 5 道填空题（fill_in_blank）
 
 要求：
 - 题目紧扣教材内容，不要出偏题。
@@ -65,6 +88,12 @@ def build_prompt(chapter_text: str) -> str:
 JSON 输出格式严格如下（字段名不要改）：
 
 {{
+  "meta": {{
+    "chapter_index": 2,
+    "chapter_title": "第2章 线性表",
+    "quiz_title": "第2章·线性表——顺序表与链表综合练习",
+    "quiz_description": "本题库围绕线性表的基本概念、顺序表与链表的表示与操作以及有序表合并等内容设计，适合作为本章学习后的巩固与自测。"
+  }},
   "multiple_choice": [
     {{
       "id": 1,
@@ -86,7 +115,13 @@ JSON 输出格式严格如下（字段名不要改）：
 
 特别注意：
 - 顶层必须是一个 JSON 对象。
-- 不要输出任何与 JSON 无关的文字，比如“好的，下面是题目”“解析如下”等。
+- **必须包含 meta 字段**，且内部字段名严格是：
+  - chapter_index (int): 章节编号
+  - chapter_title (string): 教材中这章的正式标题，例如 "第2章 线性表"
+  - quiz_title (string): 这个题库本身的标题，适合放在页面/Markdown 的 H1，例如 "第2章·线性表——顺序表与链表综合练习"
+  - quiz_description (string): 2-3 句话，说明本题库涵盖的知识点 & 适用人群，用于页面顶部的小字/manifest 描述
+- 仍然必须有 multiple_choice 和 fill_in_blank 数组。
+- 不要输出任何与 JSON 无关的文字，比如"好的，下面是题目""解析如下"等。
 - 不要使用注释。
 - 不要把 JSON 放在代码块（例如 ```json）里。
 """
@@ -144,6 +179,7 @@ def parse_questions_json(raw_content: str) -> Dict[str, Any]:
     """
     尝试把模型输出解析成 JSON。
     如果解析失败，则抛出异常，方便你手动检查原始输出。
+    兼容 meta 字段，如果缺失则只打印警告。
     """
     # 有些模型可能会在前后混入奇怪字符，这里简单做一次 strip
     text = raw_content.strip()
@@ -162,9 +198,20 @@ def parse_questions_json(raw_content: str) -> Dict[str, Any]:
             f"解析 JSON 失败，请手动检查模型输出。\n错误：{e}\n原始内容：\n{text}"
         ) from e
 
-    # 简单结构校验
+    # 结构校验
     if "multiple_choice" not in data or "fill_in_blank" not in data:
         print("警告：JSON 中缺少 multiple_choice 或 fill_in_blank 字段。")
+
+    # 检查 meta 字段
+    if "meta" not in data:
+        print("警告：JSON 中缺少 meta 字段，后续渲染脚本可能无法自动生成标题和描述。")
+    else:
+        meta = data.get("meta", {})
+        required_meta_fields = ["chapter_index", "chapter_title", "quiz_title", "quiz_description"]
+        missing_fields = [f for f in required_meta_fields if f not in meta]
+        if missing_fields:
+            print(f"警告：meta 中缺少以下字段：{', '.join(missing_fields)}")
+
     return data
 
 
@@ -197,7 +244,7 @@ def main() -> None:
     parser.add_argument(
         "--api-key",
         type=str,
-        default=DEFAULT_API_KEY,
+        default=None,
         help="DeepSeek API Key（可通过参数、环境变量或脚本内默认值提供）",
     )
     parser.add_argument(
@@ -205,6 +252,18 @@ def main() -> None:
         type=float,
         default=0.4,
         help="采样温度，默认为 0.4（偏稳重一点）",
+    )
+    parser.add_argument(
+        "--chapter-id",
+        type=int,
+        default=None,
+        help="章节编号（可选，用于提示模型，例如 2）",
+    )
+    parser.add_argument(
+        "--chapter-title",
+        type=str,
+        default=None,
+        help="章节标题（可选，用于提示模型，例如 '第2章 线性表'）",
     )
 
     args = parser.parse_args()
@@ -219,7 +278,11 @@ def main() -> None:
     output_path = Path(args.output)
 
     chapter_text = load_text(input_path)
-    prompt = build_prompt(chapter_text)
+    prompt = build_prompt(
+        chapter_text,
+        chapter_id=args.chapter_id,
+        chapter_title=args.chapter_title,
+    )
     raw_content = call_deepseek(
         api_key=api_key,
         model=args.model,
