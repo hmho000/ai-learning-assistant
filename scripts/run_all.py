@@ -4,18 +4,38 @@ run_all.py
 
 一键调度 PDF 解析、AI 出题、Markdown 渲染与 manifest 更新的脚本。
 
+功能：
+- 自动从 PDF 提取章节文本
+- 调用 AI 生成题库 JSON（包含 meta 元数据）
+- 渲染 Markdown 并更新 manifest.json
+- 自动同步 Markdown 到 frontend/public/questions/ 目录
+
 PowerShell 示例：
 
-```
+```powershell
+# 一键生成第1章题库并同步到前端
+python .\scripts\run_all.py `
+  --chapters "1" `
+  --chapter-titles "绪论"
+
+# 批量生成多章节
 python .\scripts\run_all.py `
   --pdf ".\data\数据结构（C语言版）（第3版）双色版 (李冬梅,严蔚敏,吴伟民) (Z-Library).pdf" `
   --output-dir ".\experiments\output" `
   --chapters "1,2,3" `
   --chapter-titles "绪论,线性表,栈和队列"
+
+# 生成后启动前端开发服务器
+cd frontend
+npm run dev
 ```
+
+注意：脚本会自动将生成的 Markdown 文件复制到 frontend/public/questions/ 目录，
+无需手动复制。manifest.json 中的 file 字段会自动使用正确的文件名。
 """
 
 import argparse
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -28,6 +48,7 @@ DEFAULT_PDF_PATH = Path("data") / DEFAULT_PDF_NAME
 PARSE_SCRIPT = REPO_ROOT / "experiments" / "parse_pdf_demo.py"
 GENERATE_SCRIPT = REPO_ROOT / "experiments" / "generate_questions_demo.py"
 RENDER_SCRIPT = REPO_ROOT / "experiments" / "render_questions_demo.py"
+FRONTEND_QUESTIONS_DIR = REPO_ROOT / "frontend" / "public" / "questions"
 
 
 def parse_chapters_arg(raw: Optional[str]) -> List[int]:
@@ -137,6 +158,15 @@ def process_chapter(
         if show_answer:
             cmd.append("--show-answer")
         run_subprocess(cmd)
+
+    # Step 4: 同步 Markdown 到前端 public/questions 目录
+    try:
+        FRONTEND_QUESTIONS_DIR.mkdir(parents=True, exist_ok=True)
+        target_md = FRONTEND_QUESTIONS_DIR / markdown_file.name
+        shutil.copy2(markdown_file, target_md)
+        print(f"[同步] 已复制 Markdown 到前端目录：{target_md}")
+    except Exception as exc:
+        print(f"[警告] 同步 Markdown 到前端目录失败（不影响主流程）：{exc}")
 
     print(f"[完成] 第 {chapter_id} 章：")
     print(f"  Clean TXT : {clean_txt}")
