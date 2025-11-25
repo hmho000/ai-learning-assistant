@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 
-DEFAULT_INPUT_PATH = Path("experiments/output/chapter_2_questions.json")
+DEFAULT_INPUT_PATH = Path("experiments/output/chapter_questions.json")
 
 # 前端根目录路径
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -158,78 +158,69 @@ def render_markdown(
     return "\n".join(lines).strip() + "\n"
 
 
+def slugify(value: str) -> str:
+    return "".join(ch.lower() if ch.isalnum() else "-" for ch in value).strip("-") or "course"
+
+
 def update_manifest(
     manifest_path: Path,
+    course_id: str,
+    course_name: str,
     chapter_id: int,
     chapter_title: str,
     markdown_file: Path,
     chapter_desc: Optional[str] = None,
 ) -> None:
-    """
-    更新或创建 manifest.json，添加或更新章节信息。
-
-    Args:
-        manifest_path: manifest.json 的完整路径
-        chapter_id: 章节 ID（整数）
-        chapter_title: 章节标题，例如 "第2章 线性表"
-        markdown_file: Markdown 文件的完整路径（用于提取文件名）
-        chapter_desc: 章节描述（可选）
-    """
-    # 如果 manifest 不存在，创建默认结构
     if not manifest_path.exists():
-        manifest_data = {
-            "course": "数据结构",
-            "chapters": [],
-        }
+        manifest_data = {"courses": []}
     else:
         manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    # 确保 chapters 字段存在
-    if "chapters" not in manifest_data:
-        manifest_data["chapters"] = []
+    if "courses" not in manifest_data:
+        manifest_data["courses"] = []
 
-    # 生成 shortLabel
-    short_label = f"第{chapter_id}章"
-
-    # 提取文件名（只保存相对文件名）
-    file_name = markdown_file.name
-
-    # 查找是否已存在相同 id 的章节
-    existing_index = None
-    for idx, ch in enumerate(manifest_data["chapters"]):
-        if ch.get("id") == chapter_id:
-            existing_index = idx
+    course_entry = None
+    for course in manifest_data["courses"]:
+        if course.get("id") == course_id:
+            course_entry = course
             break
 
+    if course_entry is None:
+        course_entry = {"id": course_id, "name": course_name, "chapters": []}
+        manifest_data["courses"].append(course_entry)
+        print(f"已新增课程 {course_name} ({course_id})。")
+    else:
+        course_entry["name"] = course_name
+
+    chapters = course_entry.setdefault("chapters", [])
+
+    file_name = markdown_file.name
     chapter_entry = {
         "id": chapter_id,
-        "label": chapter_title,
-        "shortLabel": short_label,
+        "title": chapter_title,
         "file": file_name,
         "description": chapter_desc or "",
     }
 
-    if existing_index is not None:
-        # 更新现有章节
-        manifest_data["chapters"][existing_index] = chapter_entry
-        print(f"已更新章节 {chapter_id} 的信息。")
+    existing_idx = next(
+        (idx for idx, ch in enumerate(chapters) if ch.get("id") == chapter_id), None
+    )
+    if existing_idx is not None:
+        chapters[existing_idx] = chapter_entry
+        print(f"已更新课程 {course_name} 中的章节 {chapter_id}。")
     else:
-        # 新增章节
-        manifest_data["chapters"].append(chapter_entry)
-        print(f"已新增章节 {chapter_id} 到清单。")
+        chapters.append(chapter_entry)
+        print(f"已向课程 {course_name} 添加章节 {chapter_id}。")
 
-    # 按 id 排序
-    manifest_data["chapters"].sort(key=lambda x: x.get("id", 0))
+    chapters.sort(key=lambda x: x.get("id", 0))
+    manifest_data["courses"].sort(key=lambda x: x.get("name", ""))
 
-    # 确保目录存在
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # 写回文件
     manifest_path.write_text(
         json.dumps(manifest_data, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"已更新章节清单：{manifest_path}")
+    print(f"已更新多课程清单：{manifest_path}")
 
 
 def main() -> None:
@@ -253,23 +244,20 @@ def main() -> None:
         action="store_true",
         help="输出时显示答案与解析",
     )
+    parser.add_argument("--chapter-id", type=int, default=None, help="章节 ID 兜底值")
+    parser.add_argument("--chapter-title", type=str, default=None, help="章节标题兜底值")
+    parser.add_argument("--chapter-desc", type=str, default=None, help="章节描述兜底值")
     parser.add_argument(
-        "--chapter-id",
-        type=int,
-        default=None,
-        help="章节 ID（可选，用于 override 或兜底，例如 2）",
-    )
-    parser.add_argument(
-        "--chapter-title",
+        "--course-name",
         type=str,
         default=None,
-        help="章节标题（可选，用于 override，例如 '第2章 线性表'）",
+        help="课程名称（默认取 JSON 文件名）",
     )
     parser.add_argument(
-        "--chapter-desc",
+        "--course-id",
         type=str,
         default=None,
-        help="章节描述（可选，用于 override）",
+        help="课程 ID（默认根据课程名称自动生成 slug）",
     )
 
     args = parser.parse_args()
@@ -300,7 +288,9 @@ def main() -> None:
     quiz_title = meta.get("quiz_title")
     quiz_description = meta.get("quiz_description")
 
-    # 渲染 Markdown
+    course_name = args.course_name or meta.get("course_name") or input_path.stem
+    course_id = args.course_id or slugify(course_name)
+
     markdown = render_markdown(
         questions_data,
         args.show_answer,
@@ -317,6 +307,8 @@ def main() -> None:
         # 更新 manifest.json
         update_manifest(
             manifest_path=MANIFEST_PATH,
+            course_id=course_id,
+            course_name=course_name,
             chapter_id=effective_chapter_id,
             chapter_title=effective_chapter_title,
             markdown_file=output_path,

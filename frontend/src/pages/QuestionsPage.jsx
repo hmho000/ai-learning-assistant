@@ -1,35 +1,67 @@
 import { useEffect, useState } from "react";
 import QuestionViewer from "../components/QuestionViewer.jsx";
 
+const normalizeCourses = (data) => {
+  if (Array.isArray(data.courses)) {
+    return data.courses.map((course) => ({
+      ...course,
+      chapters: normalizeChapters(course.chapters || []),
+    }));
+  }
+  const fallbackCourse = {
+    id: "default-course",
+    name: data.course || "未命名课程",
+    chapters: normalizeChapters(data.chapters || []),
+  };
+  return [fallbackCourse];
+};
+
+const normalizeChapters = (chapters) => {
+  return chapters.map((ch, idx) => {
+    const fallbackTitle =
+      chapters.length === 1 ? "全文" : ch.label || `章节 ${ch.id ?? idx + 1}`;
+    return {
+      id: ch.id ?? idx + 1,
+      title: ch.title || ch.label || fallbackTitle,
+      file: ch.file,
+      description: ch.description || "",
+    };
+  });
+};
+
 const QuestionsPage = () => {
-  const [chapters, setChapters] = useState([]);
-  const [course, setCourse] = useState("数据结构");
+  const [courses, setCourses] = useState([]);
+  const [selectedCourseId, setSelectedCourseId] = useState(null);
   const [selectedChapterId, setSelectedChapterId] = useState(null);
   const [markdownText, setMarkdownText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [manifestLoading, setManifestLoading] = useState(true);
 
-  const selectedChapter = chapters.find((ch) => ch.id === selectedChapterId);
+  const selectedCourse = courses.find((course) => course.id === selectedCourseId);
+  const selectedChapter =
+    selectedCourse?.chapters.find((ch) => ch.id === selectedChapterId) || null;
 
   useEffect(() => {
     const loadManifest = async () => {
       try {
         const response = await fetch("/questions/manifest.json");
         if (!response.ok) {
-          throw new Error("无法加载章节清单");
+          throw new Error("无法加载课程清单");
         }
         const data = await response.json();
-        setCourse(data.course || "数据结构");
-        const sortedChapters = (data.chapters || []).sort((a, b) => a.id - b.id);
-        setChapters(sortedChapters);
-
-        if (sortedChapters.length > 0) {
-          setSelectedChapterId(sortedChapters[0].id);
+        const normalized = normalizeCourses(data);
+        setCourses(normalized);
+        if (normalized.length > 0) {
+          setSelectedCourseId(normalized[0].id);
+          const firstChapter = normalized[0].chapters[0];
+          if (firstChapter) {
+            setSelectedChapterId(firstChapter.id);
+          }
         }
       } catch (err) {
         console.error("加载 manifest 失败：", err);
-        setError("无法加载章节清单，请检查 manifest.json 文件。");
+        setError("无法加载课程清单，请检查 manifest.json 文件。");
       } finally {
         setManifestLoading(false);
       }
@@ -60,15 +92,29 @@ const QuestionsPage = () => {
   };
 
   useEffect(() => {
-    if (selectedChapterId !== null && selectedChapter) {
+    if (selectedChapter) {
       loadMarkdownForChapter(selectedChapter);
     }
-  }, [selectedChapterId]);
+  }, [selectedChapterId, selectedCourseId]);
+
+  const handleCourseChange = (e) => {
+    const newCourseId = e.target.value;
+    setSelectedCourseId(newCourseId);
+    const nextCourse = courses.find((course) => course.id === newCourseId);
+    const firstChapter = nextCourse?.chapters[0];
+    setSelectedChapterId(firstChapter ? firstChapter.id : null);
+  };
 
   const handleChapterChange = (e) => {
     const newId = parseInt(e.target.value, 10);
     setSelectedChapterId(newId);
   };
+
+  const displayChapterTitle =
+    selectedChapter?.title ||
+    (selectedCourse?.chapters.length === 1 ? "全文" : "未命名章节");
+
+  const canRenderViewer = !manifestLoading && selectedCourse && selectedChapter;
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-100 via-slate-50 to-white py-10 px-4">
@@ -80,37 +126,48 @@ const QuestionsPage = () => {
                 AI Practice Library
               </p>
               <h1 className="text-3xl font-bold text-slate-900 mt-2">
-                《{course}》{selectedChapter?.label || "AI生成题库"}
+                《{selectedCourse?.name || "未命名课程"}》{displayChapterTitle}
               </h1>
-              {selectedChapter?.description && (
+              {selectedChapter?.description ? (
                 <p className="text-slate-500 mt-1">{selectedChapter.description}</p>
-              )}
-              {!selectedChapter?.description && (
+              ) : (
                 <p className="text-slate-500 mt-1">
-                  支持多章节切换，方便老师与同学预览、校对与练习。
+                  支持多课程、多语言章节标题，自动适配“全文”或英文章节结构。
                 </p>
               )}
             </div>
-            <div className="flex flex-col w-full md:w-64">
-              <label
-                htmlFor="chapter-select"
-                className="text-sm font-medium text-slate-600 mb-2"
-              >
-                选择章节
-              </label>
+            <div className="flex flex-col w-full md:w-[520px] gap-3">
+              <label className="text-sm font-medium text-slate-600">选择课程</label>
               <select
-                id="chapter-select"
-                value={selectedChapterId || ""}
-                onChange={handleChapterChange}
-                disabled={manifestLoading || chapters.length === 0}
+                value={selectedCourseId || ""}
+                onChange={handleCourseChange}
+                disabled={manifestLoading || courses.length === 0}
                 className="rounded-xl border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-inner focus:outline-none focus:ring-2 focus:ring-brand-blue/60 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {chapters.length === 0 && (
+                {courses.length === 0 && <option value="">暂无课程</option>}
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.name}
+                  </option>
+                ))}
+              </select>
+              <label className="text-sm font-medium text-slate-600">选择章节</label>
+              <select
+                value={selectedChapterId || ""}
+                onChange={handleChapterChange}
+                disabled={
+                  manifestLoading ||
+                  !selectedCourse ||
+                  (selectedCourse?.chapters.length || 0) === 0
+                }
+                className="rounded-xl border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-inner focus:outline-none focus:ring-2 focus:ring-brand-blue/60 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {(!selectedCourse || selectedCourse.chapters.length === 0) && (
                   <option value="">暂无章节</option>
                 )}
-                {chapters.map((chapter) => (
+                {selectedCourse?.chapters.map((chapter) => (
                   <option key={chapter.id} value={chapter.id}>
-                    {chapter.shortLabel || chapter.label}
+                    {chapter.title}
                   </option>
                 ))}
               </select>
@@ -120,17 +177,17 @@ const QuestionsPage = () => {
 
         {manifestLoading && (
           <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-slate-500">
-            正在加载章节清单…
+            正在加载课程与章节清单…
           </div>
         )}
 
-        {!manifestLoading && chapters.length === 0 && (
+        {!manifestLoading && !selectedCourse && (
           <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-slate-500">
-            当前暂无可用章节，请先运行 Python 脚本生成题库。
+            当前暂无可用课程，请先运行 Python 脚本生成题库。
           </div>
         )}
 
-        {!manifestLoading && chapters.length > 0 && (
+        {canRenderViewer && (
           <>
             {loading && (
               <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-slate-500">
@@ -151,7 +208,11 @@ const QuestionsPage = () => {
             )}
 
             {!loading && !error && markdownText !== "" && (
-              <QuestionViewer markdownText={markdownText} key={selectedChapterId} />
+              <QuestionViewer
+                markdownText={markdownText}
+                heading={`${selectedCourse?.name || "未命名课程"} · ${displayChapterTitle}`}
+                key={`${selectedCourseId}-${selectedChapterId}`}
+              />
             )}
           </>
         )}
