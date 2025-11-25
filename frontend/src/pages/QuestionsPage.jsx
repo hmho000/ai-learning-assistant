@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import QuestionViewer from "../components/QuestionViewer.jsx";
+import QuizExamView from "../components/quiz/QuizExamView";
+import { loadQuizJsonByChapter } from "../utils/quizUtils";
 
 const normalizeChapters = (chapters = []) =>
   chapters.map((ch, idx) => {
@@ -50,6 +52,10 @@ const QuestionsPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [manifestLoading, setManifestLoading] = useState(true);
+  const [viewMode, setViewMode] = useState("read"); // "read" | "quiz"
+  const [quizData, setQuizData] = useState(null);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizError, setQuizError] = useState("");
 
   const selectedCourse = courses.find((course) => course.id === selectedCourseId);
   const selectedChapter =
@@ -109,6 +115,13 @@ const QuestionsPage = () => {
       loadMarkdownForChapter(selectedChapter);
     }
   }, [selectedChapterId, selectedCourseId]);
+
+  // 章节切换时，重置模式和题库数据
+  useEffect(() => {
+    setViewMode("read");
+    setQuizData(null);
+    setQuizError("");
+  }, [selectedChapterId]);
 
   const handleCourseChange = (e) => {
     const newCourseId = e.target.value;
@@ -234,11 +247,78 @@ const QuestionsPage = () => {
             )}
 
             {!loading && !error && markdownText !== "" && (
-              <QuestionViewer
-                markdownText={markdownText}
-                heading={viewerHeading}
-                key={`${selectedCourseId}-${selectedChapterId}`}
-              />
+              <>
+                <div className="flex gap-2 mb-4">
+                  <button
+                    className={`px-3 py-1 rounded ${
+                      viewMode === "read"
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-200"
+                    }`}
+                    onClick={() => setViewMode("read")}
+                  >
+                    阅读题库
+                  </button>
+
+                  <button
+                    className={`px-3 py-1 rounded ${
+                      viewMode === "quiz"
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-200"
+                    }`}
+                    onClick={async () => {
+                      setViewMode("quiz");
+                      if (!quizData) {
+                        try {
+                          setQuizLoading(true);
+                          setQuizError("");
+                          const data = await loadQuizJsonByChapter(
+                            selectedChapterId
+                          );
+                          setQuizData(data);
+                        } catch (err) {
+                          console.error(err);
+                          setQuizError("加载题库失败，请稍后重试。");
+                        } finally {
+                          setQuizLoading(false);
+                        }
+                      }
+                    }}
+                  >
+                    开始答题
+                  </button>
+                </div>
+
+                {viewMode === "read" && (
+                  <QuestionViewer
+                    markdownText={markdownText}
+                    heading={viewerHeading}
+                    key={`${selectedCourseId}-${selectedChapterId}`}
+                  />
+                )}
+
+                {viewMode === "quiz" && (
+                  <>
+                    {quizLoading && (
+                      <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-slate-500">
+                        题库加载中...
+                      </div>
+                    )}
+                    {quizError && (
+                      <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-red-500">
+                        {quizError}
+                      </div>
+                    )}
+                    {quizData && (
+                      <QuizExamView
+                        quiz={quizData}
+                        chapterId={selectedChapterId}
+                        courseId={selectedCourseId}
+                      />
+                    )}
+                  </>
+                )}
+              </>
             )}
           </>
         )}

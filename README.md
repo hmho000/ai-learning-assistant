@@ -46,12 +46,18 @@ AI Learning Assistant 是一个面向大学生设计的智能学习辅助项目�
 - ✔ 支持显示答案模式（`--show-answer`）
 
 ### 🎨 4. 前端展示
-- ✔ React + Vite 前端界面
+- ✔ React + Vite + TypeScript 前端界面
 - ✔ Markdown 题库渲染（使用 react-markdown）
 - ✔ 章节下拉选择器
 - ✔ 动态加载章节题库
 - ✔ TailwindCSS 美化样式
-- ⬜ 答题交互功能（规划中）
+- ✔ **答题交互功能**（已实现）
+  - ✔ 阅读模式：查看 Markdown 格式的题库
+  - ✔ 答题模式：交互式答题，支持一次性提交所有答案
+  - ✔ 自动评分：提交后自动计算得分和正确率
+  - ✔ 答题结果展示：显示错题列表、正确答案和解析
+  - ✔ 本地存储：答题结果自动保存到 localStorage
+- ✔ 练习模式：每道题独立作答，实时反馈（已实现）
 - ⬜ 错题本（规划中）
 - ⬜ 学习报告（规划中）
 
@@ -81,6 +87,7 @@ AI Learning Assistant 是一个面向大学生设计的智能学习辅助项目�
 ### 🎨 前端
 - **React 18.3+**
 - **Vite 5.4+**
+- **TypeScript**：类型安全
 - **react-markdown**：Markdown 渲染
 - **react-router-dom**：路由管理
 - **TailwindCSS 3.4+**：样式框架
@@ -95,11 +102,29 @@ ai-learning-assistant/
 ├── frontend/             # 前端代码
 │   ├── src/
 │   │   ├── components/   # React 组件
+│   │   │   ├── quiz/     # 答题相关组件
+│   │   │   │   ├── QuizView.tsx              # 练习模式组件
+│   │   │   │   ├── QuizExamView.tsx          # 答题模式组件
+│   │   │   │   ├── MultipleChoiceQuestion.tsx      # 练习模式选择题
+│   │   │   │   ├── MultipleChoiceQuestionExam.tsx  # 答题模式选择题
+│   │   │   │   ├── FillInBlankQuestion.tsx         # 练习模式填空题
+│   │   │   │   ├── FillInBlankQuestionExam.tsx     # 答题模式填空题
+│   │   │   │   ├── QuizSummary.tsx           # 练习模式总结
+│   │   │   │   └── QuizExamSummary.tsx       # 答题模式总结
+│   │   │   └── QuestionViewer.jsx            # Markdown 阅读器
 │   │   ├── pages/        # 页面组件
+│   │   │   └── QuestionsPage.jsx             # 题库页面（支持阅读/答题模式切换）
+│   │   ├── types/        # TypeScript 类型定义
+│   │   │   └── quiz.ts   # 题库相关类型
+│   │   ├── utils/        # 工具函数
+│   │   │   ├── quizUtils.ts      # 题库工具函数
+│   │   │   └── quizStorage.ts    # 本地存储管理
 │   │   └── App.jsx       # 主应用
 │   ├── public/
-│   │   └── questions/    # 题库 Markdown 文件
-│   │       └── manifest.json  # 章节清单
+│   │   └── questions/    # 题库文件
+│   │       ├── manifest.json           # 章节清单
+│   │       ├── ch*_questions.md        # Markdown 格式题库
+│   │       └── ch*_questions.json      # JSON 格式题库（答题模式使用）
 │   └── package.json
 │
 ├── experiments/          # 实验脚本
@@ -183,6 +208,15 @@ npm run dev
 ```
 
 然后在浏览器访问 `http://localhost:5173` 查看生成的题库。
+
+**前端功能说明**：
+- **阅读模式**：点击"阅读题库"按钮，以 Markdown 格式查看题库内容
+- **答题模式**：点击"开始答题"按钮，进入交互式答题界面
+  - 填写所有题目后，点击"提交答案"一次性提交
+  - 系统自动计算得分并显示答题结果
+  - 答题结果会保存到浏览器本地存储
+
+**注意**：答题模式需要 JSON 格式的题库文件。如果只有 Markdown 文件，需要确保对应的 JSON 文件（`ch{id}_questions.json`）已复制到 `frontend/public/questions/` 目录。
 
 ---
 
