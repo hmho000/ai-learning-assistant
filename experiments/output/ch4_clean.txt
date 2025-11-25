@@ -1,0 +1,76 @@
+第 章
+
+串 、 数 组 和 广 义 表 【输入输出示例】
+输入: "A man, a plan, a canal: Panama" 输出：true 解释："amanaplanacanalpanama" 是回文串。
+【问题分析】
+本题可以在原字符串s 上使用left 和 right 两个指针。初始时，left 指向字符串 第一个字符，right 指向最后一个字符。若 left 所指字符为非字母数字字符，则将left 向右移动，直到left 指向一个字母或数字 字符；若right 所指字符为非字母数字字 符，则将right 向左移动，直到right 指向 一个字母或数字字符。然后判断两个指针 所指的字符转换为小写之后是否相同，若 相同，则继续移动，直到left>=right，并 返回true，若不同，则返回false。具体实 现步骤如图4.23 所示。
+【算法步骤】
+① 定义left 和right 两个指针，初始时left 指向第一个字符，right 指向最后一个字符。
+② 遍历字符串s，当left < right 时，循环执行以下操作：  若left 所指字符为非字母数字字符，则将其向右移动一步，并循环执行此操作，直到 left 所指字符为字母或数字字符；
+ 若right 所指字符为非字母数字字符，则将其向左移动一步，并循环执行此操作，直到 right 所指字符为字母数字字符；
+ 若left 和right 所指字符转换为小写后不同，则返回false ；
+ 若left 和right 所指字符转换为小写后相同，则left 向右移动一步，right 向左移动一步。
+③ left>=right，遍历完字符串s，返回true。
+【算法描述】
+bool isPalindrome(char * s)
+{// 验证回文串
+   int n = strlen(s);
+   int left = 0, right = n-1;
+   while (left < right)                          // 遍历字符串s
+   {
+      while (left < right && !isalnum(s[left]))  //left 所指字符为非字母数字字符
+         ++left;                                 // 右移一步
+      while (left < right && !isalnum(s[right])) //right 所指字符为非字母数字字符
+          --right;                               // 左移一步
+      if (left < right)
+      {
+          if (tolower(s[left]) != tolower(s[right]))   // 所指字符不同，返回false
+              return false;
+          ++left;                                // 所指字符相同，移动left和right
+          --right;
+      }
+（a）初始状态 （b）left和right所指字符相同，移动至下一个字母或数字字符 （c）left = = right，返回true left A man , a   plan , a   canal :
+Panama A man , a   plan , a   canal :
+Panama A man , a   plan , a   canal :
+Panama right left left right right 图4.23  LeetCode 125具体实现步骤
+
+数 据 结 构
+
+（ 第 版 ）
+
+   }
+   return true;                                //left>=right，返回true
+}
+【算法分析】
+最坏情况下，算法需要遍历输入字符串s 的每个字符，因此，时间复杂度为O(n) ；算法只需 要两个指针的额外空间，因此空间复杂度为O(1)。
+【算法练习题4.2】LeetCode 566 重塑矩阵★ 【问题描述】
+MATLAB 中有一个非常有用的函数reshape()，该函数可以将一个m×n 的矩阵重塑为一个r×c 的新矩阵，且仍保留原始数据。给定一个由二维数组mat 表示的m×n 矩阵，以及两个正整数r 和c， 分别表示重塑矩阵的行数和列数。重塑矩阵时需要将原矩阵的所有元素以相同的行遍历顺序填充。
+如果给定参数的reshape 操作是可行且合理的，则输出新的重塑矩阵；否则输出原矩阵。
+【输入输出示例】
+输入：mat = [[1, 2], [3, 4]]，r = 1, c = 4 输出：[[1, 2, 3, 4]]
+重塑矩阵如图4.24 所示。
+【问题分析】
+本题首先需要判断给定参数的reshape 操作是否可行且合理，若不合理，说明无法进行重塑，直 接返回原始矩阵mat，若合理，则可以直接从二维矩阵mat 得到r 行c 列的重塑矩阵。具体来说，若 reshape 操作可行，可以将二维数组mat 映射为一个一维数组，那么对于一维数组中的第x ∈[0, m×n) 个元素，其在mat 中对应的下标为（x / n, x % n），在重塑矩阵ans 中对应的下标为（x / c, x % c），因此， 可以直接将元素mat[x/n, x%n] 直接赋值给重塑矩阵ans[x / c, x % c]，最后返回重塑矩阵ans 即可。
+【算法步骤】
+① 初始化，得到原矩阵的行数和列数。
+② 若m×n 和r×c 不相等，则直接返回原矩阵。
+③ 若m×n 和r×c 相等，首先对重塑矩阵进行初始化，然后对于任意的x∈[0, m×n)，循环 执行以下操作：将元素mat[x / n, x % n] 赋值给重塑矩阵ans[x / c, x % c]。
+④ 返回重塑矩阵ans。
+【算法描述】
+int** matrixReshape(int** mat, int matSize, int* matColSize, int r, int c,
+int* returnSize, int** returnColumnSizes)
+{// 重塑矩阵
+   int m = matSize;
+   int n = matColSize[0];
+   if (m * n != r * c)                   // 给定参数的reshape 操作不合理，返回原矩阵
+   {
+      *returnSize = matSize;
+      *returnColumnSizes = matColSize;
+      return mat;
+   }
+   *returnSize = r;
+   *returnColumnSizes =(int*)malloc(r*sizeof(int));
+   int** ans = (int**)malloc(r*sizeof(int*));
+   for (int i = 0; i < r; i++)           // 对重塑的新矩阵进行初始化
+   {
+图4.24  重塑矩阵
