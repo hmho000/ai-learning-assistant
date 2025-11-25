@@ -19,7 +19,7 @@ AI Learning Assistant 是一个面向大学生设计的智能学习辅助项目�
 
 ### 📖 1. 课程资料解析
 - ✔ 支持 PDF 文档解析（使用 PyMuPDF）
-- ✔ 自动抽取章节结构（基于章节标题匹配）
+- ✔ 基于 PDF 目录（TOC）精准定位章节，失效时自动回退到正则扫描
 - ✔ 自动消除噪声（页码、竖排装饰文字、断行合并）
 - ⬜ 支持 PPT 文档（规划中）
 - ⬜ 支持 Word 文档（规划中）
@@ -189,7 +189,7 @@ npm run dev
 ## 📝 脚本说明
 
 ### `experiments/parse_pdf_demo.py`
-从 PDF 中提取指定章节的文本内容。
+从 PDF 中提取指定章节的文本内容，优先根据目录（TOC）定位章节，必要时回退到正则扫描。
 
 **用法：**
 ```bash
@@ -198,6 +198,8 @@ python experiments/parse_pdf_demo.py \
   --output experiments/output/ch2_clean.txt \
   --pdf data/教材.pdf
 ```
+
+日志会打印所用模式（TOC / 兜底）、匹配到的章节标题以及页码范围，便于核对提取结果。
 
 ### `experiments/generate_questions_demo.py`
 调用 DeepSeek API 生成题库 JSON。
