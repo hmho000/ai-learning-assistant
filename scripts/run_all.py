@@ -94,9 +94,13 @@ def run_subprocess(command: List[str], cwd: Optional[Path] = None) -> None:
 
 
 def chapter_title_label(chapter_id: int, override: Optional[str]) -> str:
-    if override:
+    base = f"第{chapter_id}章"
+    if not override:
+        return base
+    override = override.strip()
+    if override.startswith("第"):
         return override
-    return f"第{chapter_id}章"
+    return f"{base} {override}".strip()
 
 
 def slugify(value: str) -> str:
@@ -121,7 +125,7 @@ def process_chapter(
     course_name: str,
     course_source_file: str,
 ) -> Tuple[Path, Path, Path]:
-    chapter_label = f"第 {chapter_id} 章 {chapter_title}".strip()
+    chapter_label = chapter_title
     clean_txt = output_dir / f"ch{chapter_id}_clean.txt"
     questions_json = output_dir / f"ch{chapter_id}_questions.json"
     markdown_file = output_dir / f"ch{chapter_id}_questions.md"
@@ -139,7 +143,7 @@ def process_chapter(
                 sys.executable,
                 str(PARSE_SCRIPT),
                 "--chapter",
-                chapter_title,
+                chapter_label,
                 "--output",
                 str(clean_txt),
                 "--pdf",
@@ -165,6 +169,13 @@ def process_chapter(
                 chapter_title,
             ]
         )
+        try:
+            FRONTEND_QUESTIONS_DIR.mkdir(parents=True, exist_ok=True)
+            target_json = FRONTEND_QUESTIONS_DIR / questions_json.name
+            shutil.copy2(questions_json, target_json)
+            print(f"[同步] 已复制题目 JSON 到前端目录：{target_json}")
+        except Exception as exc:
+            print(f"[警告] 同步题目 JSON 到前端目录失败：{exc}")
 
     # Step 3: 渲染 Markdown & 更新 manifest
     if skip_existing and markdown_file.exists():

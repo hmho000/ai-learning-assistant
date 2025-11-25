@@ -170,6 +170,7 @@ def update_manifest(
     source_title: str,
     quiz_title: str,
     markdown_file: Path,
+    json_filename: str,
     chapter_desc: Optional[str] = None,
     course_source_file: Optional[str] = None,
 ) -> None:
@@ -218,6 +219,7 @@ def update_manifest(
         "sourceTitle": source_title,
         "quizTitle": quiz_title,
         "file": file_name,
+        "jsonFile": json_filename,
         "description": chapter_desc or "",
     }
 
@@ -289,6 +291,7 @@ def main() -> None:
 
     input_path = Path(args.input)
     questions_data = load_questions(input_path)
+    json_filename = input_path.name
 
     meta = questions_data.get("meta", {}) or {}
 
@@ -345,6 +348,7 @@ def main() -> None:
             source_title=source_title,
             quiz_title=quiz_title,
             markdown_file=output_path,
+            json_filename=json_filename,
             chapter_desc=quiz_description,
         )
     else:
