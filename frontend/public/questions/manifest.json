@@ -29,5 +29,19 @@
       "file": "ch4_questions.md",
       "description": "本题库围绕字符串处理、回文验证、矩阵重塑等核心内容设计，涵盖双指针算法、字符处理、矩阵操作等知识点，适合作为本章学习后的巩固与自测。"
     }
+  ],
+  "courses": [
+    {
+      "id": "ch1-questions",
+      "name": "ch1_questions",
+      "chapters": [
+        {
+          "id": 1,
+          "title": "算法基础与时间复杂度",
+          "file": "ch1_questions.md",
+          "description": "本题库涵盖算法的定义、特性、评价标准及时间复杂度的核心概念。通过单选与填空题，帮助学习者掌握算法设计与分析的基本原理。"
+        }
+      ]
+    }
   ]
 }
