@@ -42,3 +42,26 @@ export interface CourseManifest {
   chapters: ChapterManifest[];
 }
 
+export interface UserAnswer {
+  questionId: string;
+  value: string | string[];
+}
+
+export interface QuizResult {
+  courseId: string;
+  chapterId: number;
+  score: number;
+  total: number;
+  timestamp: number;
+  answers: UserAnswer[];
+}
+
+export interface ScoreResult {
+  score: number;
+  total: number;
+  detail: {
+    questionId: string;
+    correct: boolean;
+  }[];
+}
+

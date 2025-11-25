@@ -130,3 +130,67 @@ export function getWrongQuestions(
   return result;
 }
 
+/**
+ * 保存答题结果（答题模式使用）
+ */
+export function saveQuizResult(result: {
+  courseId: string;
+  chapterId: number;
+  score: number;
+  total: number;
+  timestamp: number;
+  answers: Array<{ questionId: string; value: string | string[] }>;
+  detail?: Array<{ questionId: string; correct: boolean }>;
+}): void {
+  if (!isBrowser) {
+    return;
+  }
+
+  const resultKey = `${STORAGE_PREFIX}:result:${result.courseId}:${result.chapterId}`;
+  const results = JSON.parse(
+    window.localStorage.getItem(resultKey) || "[]"
+  ) as Array<typeof result>;
+  results.push(result);
+  window.localStorage.setItem(resultKey, JSON.stringify(results));
+
+  // 同时更新统计信息
+  const stats = readStats(result.courseId, result.chapterId);
+  stats.totalAttempts += 1;
+  stats.totalCorrect += result.score;
+
+  // 更新每道题的统计
+  if (result.detail) {
+    result.detail.forEach((item) => {
+      const questionKey = item.questionId;
+      const questionStat = stats.perQuestion[questionKey] || {
+        attempts: 0,
+        correctAttempts: 0,
+        lastCorrect: false,
+        lastAnsweredAt: "",
+      };
+      questionStat.attempts += 1;
+      if (item.correct) {
+        questionStat.correctAttempts += 1;
+      }
+      questionStat.lastCorrect = item.correct;
+      questionStat.lastAnsweredAt = new Date().toISOString();
+      stats.perQuestion[questionKey] = questionStat;
+    });
+  } else {
+    // 如果没有 detail，则只更新总统计
+    result.answers.forEach((answer) => {
+      const questionKey = answer.questionId;
+      const questionStat = stats.perQuestion[questionKey] || {
+        attempts: 0,
+        correctAttempts: 0,
+        lastCorrect: false,
+        lastAnsweredAt: "",
+      };
+      questionStat.attempts += 1;
+      stats.perQuestion[questionKey] = questionStat;
+    });
+  }
+
+  writeStats(result.courseId, result.chapterId, stats);
+}
+

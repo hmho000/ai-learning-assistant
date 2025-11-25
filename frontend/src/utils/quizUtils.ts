@@ -1,4 +1,17 @@
+import type { QuizData, UserAnswer, ScoreResult } from "../types/quiz";
+
 const OPTION_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+
+/**
+ * 根据章节号加载 JSON 题库
+ */
+export async function loadQuizJsonByChapter(chapterId: number): Promise<QuizData> {
+  const res = await fetch(`/questions/ch${chapterId}_questions.json`);
+  if (!res.ok) {
+    throw new Error(`加载题库失败: ch${chapterId}_questions.json`);
+  }
+  return res.json();
+}
 
 export function normalizeAnswer(value: string): string {
   return (value || "")
@@ -59,5 +72,78 @@ export function formatAnswerDisplay(answer: string | string[]): string {
     return answer.join(" / ");
   }
   return answer || "";
+}
+
+/**
+ * 计算答题得分
+ */
+export function calcScore(quiz: QuizData, answers: UserAnswer[]): ScoreResult {
+  const detail: { questionId: string; correct: boolean }[] = [];
+  let correctCount = 0;
+  let totalCount = 0;
+
+  // 检查选择题
+  if (quiz.multiple_choice) {
+    quiz.multiple_choice.forEach((q) => {
+      totalCount++;
+      const userAnswer = answers.find((a) => a.questionId === `mc-${q.id}`);
+      let isCorrect = false;
+
+      if (userAnswer) {
+        const userValue = Array.isArray(userAnswer.value)
+          ? userAnswer.value[0]
+          : userAnswer.value;
+        const answerLetter = extractAnswerLetter(q.answer);
+        const userLetter = extractAnswerLetter(userValue);
+
+        if (answerLetter && userLetter) {
+          isCorrect = answerLetter === userLetter;
+        } else {
+          // 如果没有字母，则进行文本比较
+          isCorrect = normalizeAnswer(userValue) === normalizeAnswer(q.answer);
+        }
+      }
+
+      if (isCorrect) {
+        correctCount++;
+      }
+
+      detail.push({
+        questionId: `mc-${q.id}`,
+        correct: isCorrect,
+      });
+    });
+  }
+
+  // 检查填空题
+  if (quiz.fill_in_blank) {
+    quiz.fill_in_blank.forEach((q) => {
+      totalCount++;
+      const userAnswer = answers.find((a) => a.questionId === `fb-${q.id}`);
+      let isCorrect = false;
+
+      if (userAnswer) {
+        const userValue = Array.isArray(userAnswer.value)
+          ? userAnswer.value[0]
+          : userAnswer.value;
+        isCorrect = checkFillBlank(userValue, q.answer);
+      }
+
+      if (isCorrect) {
+        correctCount++;
+      }
+
+      detail.push({
+        questionId: `fb-${q.id}`,
+        correct: isCorrect,
+      });
+    });
+  }
+
+  return {
+    score: correctCount,
+    total: totalCount,
+    detail,
+  };
 }
 
