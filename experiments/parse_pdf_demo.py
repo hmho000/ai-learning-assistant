@@ -14,7 +14,9 @@ import argparse
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
+
+import fitz  # PyMuPDF
 
 try:
     from .extract_text import extract_text_from_file
@@ -74,6 +76,8 @@ def save_output(text: str, output_path: Path) -> None:
 # -------------------------
 # 章节匹配
 # -------------------------
+CHAPTER_PATTERN = re.compile(r"第\s*([零一二三四五六七八九十百0-9]+)\s*章")
+
 CN_NUMERAL_MAP = {
     "零": 0,
     "一": 1,
@@ -102,7 +106,7 @@ def _parse_chapter_id(value: str) -> Optional[int]:
     if digit_match:
         return int(digit_match.group())
 
-    cn_match = re.search(r"第\s*([零一二三四五六七八九十百]+)\s*章", value)
+    cn_match = CHAPTER_PATTERN.search(value)
     if not cn_match:
         return None
 
@@ -144,24 +148,148 @@ def _chinese_numeral_to_int(text: str) -> Optional[int]:
     return total or None
 
 
-def choose_chapter(chapters: List[Dict], chapter_label: str) -> Optional[Dict]:
-    """按照 id（优先）或标题匹配章节。"""
+def parse_chapter_no(chapter_arg: str) -> int:
+    """统一解析命令行章节参数为阿拉伯数字。"""
+    chapter_id = _parse_chapter_id(chapter_arg or "")
+    if chapter_id is None:
+        raise ValueError(f"无法解析章节编号：{chapter_arg}")
+    return chapter_id
+
+
+def load_toc_chapters(doc: "fitz.Document") -> List[Dict]:
+    """
+    读取 PDF TOC，只保留顶层“第X章 …”的条目。
+    返回的 page 字段为 1-based 页码（与 PyMuPDF TOC 一致）。
+    """
+    toc = doc.get_toc(simple=True) or []
+    chapters: List[Dict] = []
+    for level, title, page in toc:
+        if level != 1:
+            continue
+        title = (title or "").strip()
+        if not title:
+            continue
+        if not CHAPTER_PATTERN.search(title):
+            continue
+        chapter_no = _parse_chapter_id(title)
+        if chapter_no is None:
+            continue
+        page_num = int(page) if isinstance(page, int) else 1
+        page_num = max(1, page_num)
+        chapters.append(
+            {
+                "chapter_no": chapter_no,
+                "title": title,
+                "page": page_num,
+            }
+        )
+    chapters.sort(key=lambda item: item["page"])
+    return chapters
+
+
+def find_chapter_by_no(
+    toc_chapters: List[Dict], chapter_no: int
+) -> Tuple[Dict, Optional[Dict]]:
+    """在 TOC 列表中查找指定章节及其下一章。"""
+    for idx, chapter in enumerate(toc_chapters):
+        if chapter["chapter_no"] != chapter_no:
+            continue
+        next_chapter = toc_chapters[idx + 1] if idx + 1 < len(toc_chapters) else None
+        return chapter, next_chapter
+    raise ValueError(f"TOC 中未找到第 {chapter_no} 章。")
+
+
+def extract_pages_text(doc: "fitz.Document", start_page: int, end_page: int) -> str:
+    """
+    根据页码范围抽取正文。
+    start_page / end_page 均为 0-based，end_page 不包含在内。
+    """
+    if start_page < 0:
+        start_page = 0
+    if end_page <= start_page:
+        end_page = start_page + 1
+    end_page = min(end_page, doc.page_count)
+    texts: List[str] = []
+    for page_index in range(start_page, end_page):
+        page = doc.load_page(page_index)
+        texts.append(page.get_text("text"))
+    return "\n".join(texts).strip()
+
+
+def extract_chapter_by_toc(doc: "fitz.Document", chapter_arg: str) -> Dict:
+    """优先使用 TOC 精准定位章节。"""
+    toc_chapters = load_toc_chapters(doc)
+    if not toc_chapters:
+        raise ValueError("TOC 为空或未包含章节信息。")
+    chapter_no = parse_chapter_no(chapter_arg)
+    current, next_chapter = find_chapter_by_no(toc_chapters, chapter_no)
+    start_page = current["page"] - 1  # 转成 0-based（PyMuPDF 页码从 1 开始）
+    # 结束页：如果有下一章，则到下一章开始；否则到文档末尾
+    if next_chapter:
+        end_page = next_chapter["page"] - 1  # 不包含下一章的开始页
+    else:
+        end_page = doc.page_count  # 最后一章，到文档末尾
+    # 确保 end_page 大于 start_page
+    if end_page <= start_page:
+        end_page = start_page + 1
+    text = extract_pages_text(doc, start_page, end_page)
+    if not text.strip():
+        raise ValueError(f"TOC 模式未提取到章节正文：{current['title']}")
+    return {
+        "text": text,
+        "title": current["title"],
+        "chapter_no": chapter_no,
+        "start_page": start_page,
+        "end_page": end_page,
+    }
+
+
+def fallback_scan_chapter_by_text(pdf_path: Path, chapter_arg: str) -> Dict:
+    """
+    TOC 不可用时，回退到全文扫描。
+    仅保留标题中包含“第X章”的候选，避免匹配前言/版权页。
+    """
+    print("章节识别：使用全文扫描兜底模式。")
+    full_text = extract_text_from_file(str(pdf_path))
+    if not full_text.strip():
+        raise ValueError("全文扫描失败：PDF 文本为空。")
+
+    chapters = split_into_chapters(full_text)
     if not chapters:
-        return None
+        raise ValueError("全文扫描失败：未识别任何章节。")
 
-    chapter_id = _parse_chapter_id(chapter_label)
-    if chapter_id is not None:
-        for chapter in chapters:
-            if chapter.get("id") == chapter_id:
-                return chapter
-
-    normalized = chapter_label.strip()
+    chapter_no = parse_chapter_no(chapter_arg)
+    filtered: List[Dict] = []
     for chapter in chapters:
-        title = chapter.get("title") or ""
-        if normalized and normalized in title:
-            return chapter
+        title = (chapter.get("title") or "").strip()
+        if not title or not CHAPTER_PATTERN.search(title):
+            continue
+        parsed_no = _parse_chapter_id(title)
+        if parsed_no is None:
+            continue
+        filtered.append(
+            {
+                "chapter_no": parsed_no,
+                "title": title,
+                "text": (chapter.get("text") or "").strip(),
+            }
+        )
 
-    return None
+    if not filtered:
+        raise ValueError("全文扫描失败：未找到包含“第X章”的候选标题。")
+
+    for candidate in filtered:
+        if candidate["chapter_no"] != chapter_no:
+            continue
+        if not candidate["text"]:
+            continue
+        return {
+            "text": candidate["text"],
+            "title": candidate["title"],
+            "chapter_no": chapter_no,
+        }
+
+    raise ValueError(f"全文扫描失败：未匹配到第 {chapter_no} 章。")
 
 
 # -------------------------
@@ -206,31 +334,33 @@ def main() -> None:
 
     print(f"正在解析章节：{args.chapter}")
 
+    toc_result: Optional[Dict] = None
+    with fitz.open(pdf_path) as doc:
+        try:
+            toc_result = extract_chapter_by_toc(doc, args.chapter)
+        except Exception as exc:
+            print(f"章节识别：TOC 模式失败（{exc}）。将尝试兜底方案。")
+
+    if toc_result:
+        start_display = toc_result["start_page"] + 1
+        end_display = toc_result["end_page"]
+        print("章节识别：使用 TOC 模式。")
+        print(
+            f"已匹配章节：{toc_result['title']}（chapter_no={toc_result['chapter_no']}, pages={start_display}~{end_display}）。"
+        )
+        save_output(toc_result["text"], output_path)
+        return
+
     try:
-        full_text = extract_text_from_file(str(pdf_path))
-    except Exception as exc:  # pragma: no cover - 记录信息方便排查
-        print(f"提取 PDF 文本失败：{exc}")
+        fallback_result = fallback_scan_chapter_by_text(pdf_path, args.chapter)
+    except Exception as exc:
+        print(f"兜底模式同样失败：{exc}")
         sys.exit(1)
 
-    if not full_text.strip():
-        print("PDF 文本为空，请检查抽取流程或 PDF 文件是否受保护。")
-        sys.exit(1)
-
-    chapters = split_into_chapters(full_text)
-    print(f"章节识别完成，共 {len(chapters)} 章。")
-
-    target = choose_chapter(chapters, args.chapter)
-    if target is None:
-        print(f"未找到章节：{args.chapter}")
-        sys.exit(1)
-
-    chapter_text = target.get("text", "").strip()
-    if not chapter_text:
-        print(f"章节 {target.get('title')} 文本为空。")
-        sys.exit(1)
-
-    print(f"已匹配章节：{target.get('title')}（id={target.get('id')}）。")
-    save_output(chapter_text, output_path)
+    print(
+        f"兜底模式匹配章节：{fallback_result['title']}（chapter_no={fallback_result['chapter_no']}）。"
+    )
+    save_output(fallback_result["text"], output_path)
 
 
 if __name__ == "__main__":
