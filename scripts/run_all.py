@@ -99,6 +99,17 @@ def chapter_title_label(chapter_id: int, override: Optional[str]) -> str:
     return f"第{chapter_id}章"
 
 
+def slugify(value: str) -> str:
+    slug_chars = []
+    for ch in value:
+        if ch.isalnum():
+            slug_chars.append(ch.lower())
+        else:
+            slug_chars.append("-")
+    slug = "".join(slug_chars).strip("-")
+    return slug or "course"
+
+
 def process_chapter(
     chapter_id: int,
     chapter_title: str,
@@ -106,6 +117,9 @@ def process_chapter(
     output_dir: Path,
     show_answer: bool,
     skip_existing: bool,
+    course_id: str,
+    course_name: str,
+    course_source_file: str,
 ) -> Tuple[Path, Path, Path]:
     chapter_label = f"第 {chapter_id} 章 {chapter_title}".strip()
     clean_txt = output_dir / f"ch{chapter_id}_clean.txt"
@@ -163,6 +177,12 @@ def process_chapter(
             str(questions_json),
             "--output",
             str(markdown_file),
+            "--course-id",
+            course_id,
+            "--course-name",
+            course_name,
+            "--course-source-file",
+            course_source_file,
         ]
         if show_answer:
             cmd.append("--show-answer")
@@ -222,6 +242,24 @@ def main() -> None:
         action="store_true",
         help="如果输出文件已存在，则跳过该步骤",
     )
+    parser.add_argument(
+        "--course-name",
+        type=str,
+        default=None,
+        help="课程名称（默认使用 PDF 文件名）",
+    )
+    parser.add_argument(
+        "--course-id",
+        type=str,
+        default=None,
+        help="课程 ID（默认由课程名称生成 slug）",
+    )
+    parser.add_argument(
+        "--course-source-file",
+        type=str,
+        default=None,
+        help="课程原始文件名（默认使用 PDF 文件名）",
+    )
 
     args = parser.parse_args()
 
@@ -243,6 +281,10 @@ def main() -> None:
     else:
         print("章节标题：未提供，将使用“第X章”格式。")
 
+    course_name = args.course_name or pdf_path.stem
+    course_id = args.course_id or slugify(course_name)
+    course_source_file = args.course_source_file or pdf_path.name
+
     for idx, chapter_id in enumerate(chapters):
         title_override = titles[idx] if titles else None
         chapter_title = chapter_title_label(chapter_id, title_override)
@@ -254,6 +296,9 @@ def main() -> None:
                 output_dir=output_dir,
                 show_answer=args.show_answer,
                 skip_existing=args.skip_existing,
+                course_id=course_id,
+                course_name=course_name,
+                course_source_file=course_source_file,
             )
         except subprocess.CalledProcessError as exc:
             print(f"[错误] 第 {chapter_id} 章处理失败：{exc}", file=sys.stderr)

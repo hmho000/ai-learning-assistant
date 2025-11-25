@@ -13,16 +13,94 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
+# 默认输入/输出路径（一般由 run_all.py 显式传入）
 DEFAULT_INPUT_PATH = Path("experiments/output/chapter_text.txt")
 DEFAULT_OUTPUT_PATH = Path("experiments/output/chapter_questions.json")
+
+# DeepSeek API 配置
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEFAULT_MODEL = "deepseek-chat"
-DEFAULT_API_KEY = "sk-3242989c595b4e0e9798190133d80bf5"
+# 出于安全考虑，这里不再硬编码真实 API Key，建议使用环境变量或命令行参数
+DEFAULT_API_KEY = "sk-3242989c595b4e0e9798190133d80bf5"  # 或者直接删掉，让下面的检查报错提醒配置
+
+# 题目数量下限（仅用于报警提示，不会自动补题）
+MIN_QUESTIONS_PER_TYPE = 8
+
+# ---------------------------
+#  编号题过滤规则（算法2.16 / 图3.5 / 例1.1 等）
+# ---------------------------
+
+ALGO_REF_PATTERN = re.compile(
+    r"(算法\s*\d+(\.\d+)?)|"
+    r"(例\s*\d+(\.\d+)?)|"
+    r"(案例\s*\d+(\.\d+)?)|"
+    r"(图\s*\d+(\.\d+)?)|"
+    r"(表\s*\d+(\.\d+)?)"
+)
+
+
+def is_bad_referenced_question(q: Dict[str, Any]) -> bool:
+    """
+    判定题干是否严重依赖“算法/例/图/表编号”，例如：
+    - 算法2.16中……
+    - 图3.5 所示的结构……
+    这类题离开原书编号后，学生无法独立作答，因此不推荐保留。
+    """
+    text = (q.get("question") or "").strip()
+    if not text:
+        return True
+    return bool(ALGO_REF_PATTERN.search(text))
+
+
+def filter_questions(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    对模型返回的题目做质量过滤：
+    - 删除严重依赖编号（算法x.x / 例x.x / 图x.x / 表x.x）的题目
+
+    若过滤后数量不足 MIN_QUESTIONS_PER_TYPE，仅给出警告，不会自动补题。
+    """
+    mc: List[Dict[str, Any]] = payload.get("multiple_choice") or []
+    fb: List[Dict[str, Any]] = payload.get("fill_in_blank") or []
+
+    filtered_mc = [q for q in mc if not is_bad_referenced_question(q)]
+    filtered_fb = [q for q in fb if not is_bad_referenced_question(q)]
+
+    removed_mc = len(mc) - len(filtered_mc)
+    removed_fb = len(fb) - len(filtered_fb)
+
+    if removed_mc or removed_fb:
+        print(
+            f"[filter] 移除了 {removed_mc} 道选择题、{removed_fb} 道填空题"
+            "（含算法/例/图/表编号）。"
+        )
+
+    payload["multiple_choice"] = filtered_mc
+    payload["fill_in_blank"] = filtered_fb
+
+    # 数量检查（仅报警）
+    if len(filtered_mc) < MIN_QUESTIONS_PER_TYPE:
+        print(
+            f"[警告] 选择题数量少于 {MIN_QUESTIONS_PER_TYPE} 道"
+            f"（当前 {len(filtered_mc)} 道），可能是过滤掉过多编号题导致的。"
+        )
+    if len(filtered_fb) < MIN_QUESTIONS_PER_TYPE:
+        print(
+            f"[警告] 填空题数量少于 {MIN_QUESTIONS_PER_TYPE} 道"
+            f"（当前 {len(filtered_fb)} 道），可能是过滤掉过多编号题导致的。"
+        )
+
+    return payload
+
+
+# ---------------------------
+#  基础工具函数
+# ---------------------------
 
 
 def load_text(path: Path) -> str:
@@ -38,7 +116,13 @@ def build_prompt(
     chapter_index: Optional[int] = None,
     chapter_hint: Optional[str] = None,
 ) -> str:
-    context_lines = []
+    """
+    构造给 DeepSeek 的用户 Prompt。
+    - 通用学科，不再写死为《数据结构》
+    - 自动识别章节标题 / 题库标题 / 描述
+    - 要求生成 8~12 道选择题 & 8~12 道填空题
+    """
+    context_lines: List[str] = []
     if chapter_index is not None:
         context_lines.append(f"- 章节编号提示：{chapter_index}")
     if chapter_hint:
@@ -59,8 +143,11 @@ def build_prompt(
 - 尽量覆盖不同的知识点与技能层次
 - 每道题附带正确答案与简洁、明确的解析
 - 语言保持专业、严谨，禁止出现“见上文”“自行总结”等模糊描述
+- 题目必须自包含，不能依赖教材中的“算法 2.16”“图 3-5”“例 4.2”等编号。
+  如需引用，请使用自然语言描述算法/图表的内容，而不是编号。
 
 输出必须是合法 JSON，严格遵循以下结构（不得包含额外注释或文字）：
+
 {{
   "meta": {{
     "chapter_index": <int，缺省时请填 1>,
@@ -87,8 +174,9 @@ def build_prompt(
   ]
 }}
 
-请确保 multiple_choice 与 fill_in_blank 数组长度都在 8~12 之间。
-禁止输出 markdown 代码块标记（```），禁止输出任何与 JSON 无关的文字。
+要求：
+- multiple_choice 与 fill_in_blank 数组长度都应在 8~12 之间。
+- 禁止输出 markdown 代码块标记（```），禁止输出任何与 JSON 无关的文字。
 
 {context_block}
 
@@ -105,6 +193,9 @@ def call_deepseek(
     prompt: str,
     temperature: float = 0.3,
 ) -> str:
+    """
+    调用 DeepSeek Chat Completion API，返回模型输出的 content 字符串。
+    """
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -114,7 +205,10 @@ def call_deepseek(
         "messages": [
             {
                 "role": "system",
-                "content": "你是一名严谨的教育测评专家，擅长根据任意学科文本命制高质量题库。",
+                "content": (
+                    "你是一名严谨的教育测评专家，"
+                    "擅长根据任意学科文本命制高质量题库。"
+                ),
             },
             {"role": "user", "content": prompt},
         ],
@@ -136,7 +230,11 @@ def call_deepseek(
 
 
 def parse_questions_json(raw_content: str) -> Dict[str, Any]:
+    """
+    解析模型输出的 JSON，并做一层质量过滤（去掉编号题）。
+    """
     text = raw_content.strip()
+    # 兼容模型偶尔返回 ```json ... ``` 的情况
     if text.startswith("```"):
         text = text.strip("`")
         text = text.replace("json\n", "").replace("JSON\n", "")
@@ -150,9 +248,14 @@ def parse_questions_json(raw_content: str) -> Dict[str, Any]:
 
     if "meta" not in data:
         print("警告：JSON 中缺少 meta 字段。")
+
     for key in ("multiple_choice", "fill_in_blank"):
         if key not in data or not isinstance(data[key], list):
             print(f"警告：JSON 中缺少 {key} 数组。")
+
+    # 做一层编号题过滤
+    data = filter_questions(data)
+
     return data
 
 
@@ -160,6 +263,11 @@ def save_output_json(data: Dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"题目已保存到：{path}")
+
+
+# ---------------------------
+#  CLI 入口
+# ---------------------------
 
 
 def main() -> None:
@@ -192,7 +300,7 @@ def main() -> None:
         "--temperature",
         type=float,
         default=0.3,
-        help="采样温度，默认 0.3",
+        help="采样温度，默认 0.3（偏稳重）",
     )
     parser.add_argument(
         "--chapter-index",
@@ -206,7 +314,7 @@ def main() -> None:
         default=None,
         help="章节或文档标题提示（可选）",
     )
-    # 兼容旧版参数
+    # 兼容旧版 run_all.py 的参数名
     parser.add_argument(
         "--chapter-id",
         type=int,
@@ -232,7 +340,8 @@ def main() -> None:
     output_path = Path(args.output)
 
     chapter_text = load_text(input_path)
-    # 兼容旧版 run_all.py 的参数
+
+    # 兼容旧版参数：优先使用新参数，其次旧参数，最后默认 1
     effective_chapter_index = (
         args.chapter_index
         if args.chapter_index is not None
@@ -259,4 +368,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

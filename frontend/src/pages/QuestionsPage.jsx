@@ -1,32 +1,45 @@
 import { useEffect, useState } from "react";
 import QuestionViewer from "../components/QuestionViewer.jsx";
 
-const normalizeCourses = (data) => {
-  if (Array.isArray(data.courses)) {
-    return data.courses.map((course) => ({
-      ...course,
-      chapters: normalizeChapters(course.chapters || []),
-    }));
-  }
-  const fallbackCourse = {
-    id: "default-course",
-    name: data.course || "未命名课程",
-    chapters: normalizeChapters(data.chapters || []),
-  };
-  return [fallbackCourse];
-};
-
-const normalizeChapters = (chapters) => {
-  return chapters.map((ch, idx) => {
-    const fallbackTitle =
-      chapters.length === 1 ? "全文" : ch.label || `章节 ${ch.id ?? idx + 1}`;
+const normalizeChapters = (chapters = []) =>
+  chapters.map((ch, idx) => {
+    const fallbackSource =
+      ch.sourceTitle ||
+      ch.label ||
+      ch.title ||
+      (chapters.length === 1 ? "全文" : `章节 ${ch.id ?? idx + 1}`);
+    const fallbackQuiz = ch.quizTitle || ch.title || ch.label || fallbackSource;
     return {
       id: ch.id ?? idx + 1,
-      title: ch.title || ch.label || fallbackTitle,
+      sourceTitle: fallbackSource,
+      quizTitle: fallbackQuiz,
       file: ch.file,
       description: ch.description || "",
     };
   });
+
+const normalizeCourses = (data) => {
+  if (Array.isArray(data.courses) && data.courses.length > 0) {
+    return data.courses.map((course, idx) => ({
+      id: course.id || `course-${idx + 1}`,
+      name: course.name || course.sourceFile || `课程 ${idx + 1}`,
+      sourceFile: course.sourceFile || course.name || "",
+      chapters: normalizeChapters(course.chapters || []),
+    }));
+  }
+
+  if (data.course || data.chapters) {
+    return [
+      {
+        id: "default-course",
+        name: data.course || "未命名课程",
+        sourceFile: data.sourceFile || data.course || "",
+        chapters: normalizeChapters(data.chapters || []),
+      },
+    ];
+  }
+
+  return [];
 };
 
 const QuestionsPage = () => {
@@ -110,11 +123,23 @@ const QuestionsPage = () => {
     setSelectedChapterId(newId);
   };
 
-  const displayChapterTitle =
-    selectedChapter?.title ||
-    (selectedCourse?.chapters.length === 1 ? "全文" : "未命名章节");
+  const displaySourceTitle =
+    selectedChapter?.sourceTitle ||
+    (selectedCourse?.chapters.length === 1
+      ? "全文"
+      : selectedCourse?.name || selectedCourse?.sourceFile || "未命名章节");
+
+  const displayQuizTitle =
+    selectedChapter?.quizTitle && selectedChapter?.quizTitle !== displaySourceTitle
+      ? selectedChapter.quizTitle
+      : "";
 
   const canRenderViewer = !manifestLoading && selectedCourse && selectedChapter;
+  const viewerHeading = selectedChapter
+    ? `${selectedCourse?.name || selectedCourse?.sourceFile || "未命名课程"} · ${
+        selectedChapter.quizTitle || selectedChapter.sourceTitle || "AI 题库"
+      }`
+    : "";
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-100 via-slate-50 to-white py-10 px-4">
@@ -126,7 +151,8 @@ const QuestionsPage = () => {
                 AI Practice Library
               </p>
               <h1 className="text-3xl font-bold text-slate-900 mt-2">
-                《{selectedCourse?.name || "未命名课程"}》{displayChapterTitle}
+                {displaySourceTitle ? `《${displaySourceTitle}》 ` : ""}
+                {displayQuizTitle}
               </h1>
               {selectedChapter?.description ? (
                 <p className="text-slate-500 mt-1">{selectedChapter.description}</p>
@@ -167,7 +193,7 @@ const QuestionsPage = () => {
                 )}
                 {selectedCourse?.chapters.map((chapter) => (
                   <option key={chapter.id} value={chapter.id}>
-                    {chapter.title}
+                    {chapter.sourceTitle || chapter.quizTitle || `章节 ${chapter.id}`}
                   </option>
                 ))}
               </select>
@@ -210,7 +236,7 @@ const QuestionsPage = () => {
             {!loading && !error && markdownText !== "" && (
               <QuestionViewer
                 markdownText={markdownText}
-                heading={`${selectedCourse?.name || "未命名课程"} · ${displayChapterTitle}`}
+                heading={viewerHeading}
                 key={`${selectedCourseId}-${selectedChapterId}`}
               />
             )}
