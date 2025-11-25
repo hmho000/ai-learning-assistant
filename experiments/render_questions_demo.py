@@ -167,37 +167,56 @@ def update_manifest(
     course_id: str,
     course_name: str,
     chapter_id: int,
-    chapter_title: str,
+    source_title: str,
+    quiz_title: str,
     markdown_file: Path,
     chapter_desc: Optional[str] = None,
+    course_source_file: Optional[str] = None,
 ) -> None:
-    if not manifest_path.exists():
-        manifest_data = {"courses": []}
-    else:
+    if manifest_path.exists():
         manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    else:
+        manifest_data = {}
 
     if "courses" not in manifest_data:
+        legacy_course = manifest_data.pop("course", None)
+        legacy_chapters = manifest_data.pop("chapters", None)
         manifest_data["courses"] = []
+        if legacy_course or legacy_chapters:
+            manifest_data["courses"].append(
+                {
+                    "id": slugify(legacy_course or "default-course"),
+                    "name": legacy_course or "未命名课程",
+                    "sourceFile": legacy_course or "",
+                    "chapters": legacy_chapters or [],
+                }
+            )
 
-    course_entry = None
-    for course in manifest_data["courses"]:
-        if course.get("id") == course_id:
-            course_entry = course
-            break
+    courses = manifest_data.setdefault("courses", [])
+    course_entry = next((c for c in courses if c.get("id") == course_id), None)
 
     if course_entry is None:
-        course_entry = {"id": course_id, "name": course_name, "chapters": []}
-        manifest_data["courses"].append(course_entry)
+        course_entry = {
+            "id": course_id,
+            "name": course_name,
+            "sourceFile": course_source_file or course_name,
+            "chapters": [],
+        }
+        courses.append(course_entry)
         print(f"已新增课程 {course_name} ({course_id})。")
     else:
         course_entry["name"] = course_name
+        if course_source_file:
+            course_entry["sourceFile"] = course_source_file
+        course_entry.setdefault("sourceFile", course_name)
 
     chapters = course_entry.setdefault("chapters", [])
 
     file_name = markdown_file.name
     chapter_entry = {
         "id": chapter_id,
-        "title": chapter_title,
+        "sourceTitle": source_title,
+        "quizTitle": quiz_title,
         "file": file_name,
         "description": chapter_desc or "",
     }
@@ -213,14 +232,14 @@ def update_manifest(
         print(f"已向课程 {course_name} 添加章节 {chapter_id}。")
 
     chapters.sort(key=lambda x: x.get("id", 0))
-    manifest_data["courses"].sort(key=lambda x: x.get("name", ""))
+    courses.sort(key=lambda x: x.get("name", ""))
 
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(
         json.dumps(manifest_data, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"已更新多课程清单：{manifest_path}")
+    print(f"已更新课程 {course_id} 的章节清单：{manifest_path}")
 
 
 def main() -> None:
@@ -259,6 +278,12 @@ def main() -> None:
         default=None,
         help="课程 ID（默认根据课程名称自动生成 slug）",
     )
+    parser.add_argument(
+        "--course-source-file",
+        type=str,
+        default=None,
+        help="课程原始文件名（可选，用于 manifest 展示）",
+    )
 
     args = parser.parse_args()
 
@@ -284,12 +309,18 @@ def main() -> None:
         or ""
     )
 
-    # 确定题库标题和描述（用于 Markdown）
-    quiz_title = meta.get("quiz_title")
-    quiz_description = meta.get("quiz_description")
+    source_title = meta.get("chapter_title") or effective_chapter_title
+    quiz_title = meta.get("quiz_title") or source_title
+    quiz_description = meta.get("quiz_description") or effective_chapter_desc
 
     course_name = args.course_name or meta.get("course_name") or input_path.stem
     course_id = args.course_id or slugify(course_name)
+    course_source_file = (
+        args.course_source_file
+        or meta.get("course_source_file")
+        or meta.get("source_file")
+        or course_name
+    )
 
     markdown = render_markdown(
         questions_data,
@@ -309,10 +340,12 @@ def main() -> None:
             manifest_path=MANIFEST_PATH,
             course_id=course_id,
             course_name=course_name,
+            course_source_file=course_source_file,
             chapter_id=effective_chapter_id,
-            chapter_title=effective_chapter_title,
+            source_title=source_title,
+            quiz_title=quiz_title,
             markdown_file=output_path,
-            chapter_desc=effective_chapter_desc,
+            chapter_desc=quiz_description,
         )
     else:
         print(markdown)
