@@ -285,6 +285,69 @@ python scripts/run_all.py \
 
 ---
 
+## 🖥️ 前后端一体化运行与打包（FastAPI + React + PyInstaller）
+
+> 说明：本节是在原有“脚本说明”基础上的扩展，介绍如何使用 FastAPI 托管前端并打包为单文件应用。
+
+### 开发模式（前后端分离联调）
+
+- **启动后端（FastAPI）**
+
+```bash
+uvicorn backend.app:app --reload --host 127.0.0.1 --port 8000
+```
+
+- **启动前端（React + Vite）**
+
+```bash
+cd frontend
+npm run dev
+```
+
+- **联调方式**
+  - 前端开发服务器默认地址：`http://localhost:5173`
+  - `frontend/vite.config.js` 中已经配置了代理：
+    - 以 `/api` 开头的请求（如 `/api/health`、`/api/sample-quiz`）会在开发模式下自动转发到 `http://localhost:8000`
+  - 因此前端代码中可以直接请求 `/api/...`，无需关心端口差异。
+
+### 发行 / 打包模式（单文件 exe）
+
+1. **执行打包脚本**
+
+在项目根目录下：
+
+- Linux / Mac 用户：
+
+```bash
+chmod +x build_exe.sh
+./build_exe.sh
+```
+
+- Windows 用户：
+
+```bat
+build_exe.bat
+```
+
+2. **脚本内部会自动完成：**
+   - 使用 `pip install -r requirements.txt` 安装后端依赖（含 `fastapi`、`uvicorn`、`pyinstaller` 等）。  
+   - 进入 `frontend/`，执行 `npm install` 和 `npm run build` 构建前端，产物输出到 `frontend/dist`。  
+   - 调用 `pyinstaller -F run_app.py`，在 `dist/` 目录生成单文件可执行程序：
+     - Linux / Mac：`dist/run_app`
+     - Windows：`dist/run_app.exe`
+
+3. **运行发行版**
+   - 在 `dist/` 目录中找到 `run_app` 或 `run_app.exe`。  
+   - **Windows**：双击 `run_app.exe` 即可。  
+   - 程序会自动：
+     - 启动 FastAPI 后端（`backend.app:app`，地址 `http://127.0.0.1:8000`）。  
+     - 托管 `frontend/dist` 内的静态文件（`/` 与 `/assets/*`）。  
+     - 打开默认浏览器访问 `http://127.0.0.1:8000`，加载打包后的 React 应用。  
+
+> 如果在运行时看到提示“React 前端尚未构建，请先在 frontend/ 目录运行 `npm run build` 再重试。”，说明前端构建产物缺失或路径不一致，需重新执行前端构建步骤或重新运行打包脚本。
+
+---
+
 ## 🔒 安全说明
 
 **注意：** 脚本中包含默认的 API Key（用于快速测试）。在生产环境中，建议：
