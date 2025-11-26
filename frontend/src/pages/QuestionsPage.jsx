@@ -64,12 +64,15 @@ const QuestionsPage = () => {
   useEffect(() => {
     const loadManifest = async () => {
       try {
-        const response = await fetch("/questions/manifest.json");
+        // 添加时间戳防止缓存
+        const response = await fetch(`/questions/manifest.json?t=${Date.now()}`);
         if (!response.ok) {
-          throw new Error("无法加载课程清单");
+          throw new Error(`无法加载课程清单: ${response.status} ${response.statusText}`);
         }
         const data = await response.json();
+        console.log("[DEBUG] manifest.json 数据:", data);
         const normalized = normalizeCourses(data);
+        console.log("[DEBUG] 规范化后的课程数据:", normalized);
         setCourses(normalized);
         if (normalized.length > 0) {
           setSelectedCourseId(normalized[0].id);
@@ -77,10 +80,13 @@ const QuestionsPage = () => {
           if (firstChapter) {
             setSelectedChapterId(firstChapter.id);
           }
+        } else {
+          console.warn("[DEBUG] 规范化后的课程数据为空");
+          setError("课程数据为空，请检查 manifest.json 文件格式。");
         }
       } catch (err) {
         console.error("加载 manifest 失败：", err);
-        setError("无法加载课程清单，请检查 manifest.json 文件。");
+        setError(`无法加载课程清单：${err.message}`);
       } finally {
         setManifestLoading(false);
       }
