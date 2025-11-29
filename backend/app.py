@@ -12,12 +12,22 @@ FastAPI 后端应用：
 
 import os
 import sys
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlmodel import Session, select
+from .database import create_db_and_tables, get_session
+from .models import Course, Chapter, Quiz, Question, QuizReadWithQuestions
+from .services import parse_chapters_from_pdf, generate_quiz_for_chapter, save_quiz_to_db
+import shutil
+from pathlib import Path
 
 # === 创建 FastAPI 实例 ===
 app = FastAPI(title="AI 学习助手 Backend")
+
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
 
 
 # === 静态文件 & 前端托管 ===
@@ -94,6 +104,216 @@ def index_html_path() -> str:
 @app.get("/api/health")
 async def api_health():
     return {"status": "ok"}
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...), session: Session = Depends(get_session)):
+    """
+    上传 PDF 文件，创建 Course 记录
+    """
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+    
+    # 保存文件到 data 目录
+    upload_dir = Path("data")
+    upload_dir.mkdir(exist_ok=True)
+    file_path = upload_dir / file.filename
+    
+    with file_path.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    # 创建数据库记录
+    # 简单起见，用文件名作为课程标题
+    course_title = file.filename.replace(".pdf", "")
+    course = Course(title=course_title, description="Uploaded via Web")
+    session.add(course)
+    session.commit()
+    session.refresh(course)
+    
+    return {"status": "success", "course_id": course.id, "filename": file.filename}
+
+@app.get("/api/courses", response_model=list[Course])
+async def get_courses(session: Session = Depends(get_session)):
+    courses = session.exec(select(Course)).all()
+    return courses
+
+def process_course_generation(course_id: int, filename: str, session: Session):
+    """
+    后台任务：解析 PDF -> 生成题目 -> 存入数据库
+    """
+    try:
+        print(f"[Task] Starting generation for course {course_id} ({filename})")
+        pdf_path = Path("data") / filename
+        
+        # 1. 解析章节
+        chapters_data = parse_chapters_from_pdf(str(pdf_path))
+        print(f"[Task] Parsed {len(chapters_data)} chapters")
+        
+        for ch_data in chapters_data:
+            # 保存章节
+            chapter = Chapter(
+                course_id=course_id,
+                title=ch_data["title"],
+                index=ch_data["index"],
+                content_text=ch_data["content"]
+            )
+            session.add(chapter)
+            session.commit()
+            session.refresh(chapter)
+            
+            # 2. 生成题目
+            print(f"[Task] Generating quiz for chapter: {chapter.title}")
+            quiz_data = generate_quiz_for_chapter(chapter.content_text, chapter.title)
+            
+            # 3. 保存题目
+            save_quiz_to_db(session, chapter.id, quiz_data)
+            print(f"[Task] Saved quiz for chapter: {chapter.title}")
+            
+        # Update course status
+        course = session.get(Course, course_id)
+        if course:
+            course.status = "ready"
+            session.add(course)
+            session.commit()
+            
+        print(f"[Task] Completed generation for course {course_id}")
+
+    except Exception as e:
+        print(f"[Task] Error generating course {course_id}: {e}")
+        try:
+            course = session.get(Course, course_id)
+            if course:
+                course.status = "error"
+                session.add(course)
+                session.commit()
+        except Exception as db_e:
+            print(f"[Task] Failed to update error status: {db_e}")
+
+def process_course_parsing(course_id: int, filename: str, session: Session):
+    """
+    后台任务：解析 PDF -> 存入章节 -> 状态改为 parsed
+    """
+    try:
+        print(f"[Task] Starting parsing for course {course_id} ({filename})")
+        pdf_path = Path("data") / filename
+        
+        # 1. 解析章节
+        chapters_data = parse_chapters_from_pdf(str(pdf_path))
+        print(f"[Task] Parsed {len(chapters_data)} chapters")
+        
+        for ch_data in chapters_data:
+            # 保存章节
+            chapter = Chapter(
+                course_id=course_id,
+                title=ch_data["title"],
+                index=ch_data["index"],
+                content_text=ch_data["content"]
+            )
+            session.add(chapter)
+        
+        # Update course status
+        course = session.get(Course, course_id)
+        if course:
+            course.status = "parsed"
+            session.add(course)
+        
+        session.commit()
+        print(f"[Task] Completed parsing for course {course_id}")
+
+    except Exception as e:
+        print(f"[Task] Error parsing course {course_id}: {e}")
+        try:
+            course = session.get(Course, course_id)
+            if course:
+                course.status = "error"
+                session.add(course)
+                session.commit()
+        except Exception as db_e:
+            print(f"[Task] Failed to update error status: {db_e}")
+
+def process_course_generation_custom(course_id: int, config: dict, session: Session):
+    """
+    后台任务：根据配置生成题目
+    config: { chapter_ids: [1, 2], num_mc: 5, num_fb: 5 }
+    """
+    try:
+        print(f"[Task] Starting custom generation for course {course_id} with config {config}")
+        
+        # Get chapters
+        statement = select(Chapter).where(Chapter.course_id == course_id)
+        if config.get("chapter_ids"):
+             statement = statement.where(Chapter.id.in_(config["chapter_ids"]))
+        
+        chapters = session.exec(statement).all()
+        print(f"[Task] Generating for {len(chapters)} chapters")
+
+        for chapter in chapters:
+             # 2. 生成题目
+            print(f"[Task] Generating quiz for chapter: {chapter.title}")
+            # Pass custom counts if supported by service (need to update service)
+            # For now, we use default or update service.
+            # Let's assume we update service to accept counts.
+            quiz_data = generate_quiz_for_chapter(
+                chapter.content_text, 
+                chapter.title,
+                num_mc=config.get("num_mc", 5),
+                num_fb=config.get("num_fb", 5)
+            )
+            
+            # 3. 保存题目
+            save_quiz_to_db(session, chapter.id, quiz_data)
+            print(f"[Task] Saved quiz for chapter: {chapter.title}")
+
+        # Update course status
+        course = session.get(Course, course_id)
+        if course:
+            course.status = "ready"
+            session.add(course)
+            session.commit()
+            
+        print(f"[Task] Completed generation for course {course_id}")
+
+    except Exception as e:
+        print(f"[Task] Error generating course {course_id}: {e}")
+        try:
+            course = session.get(Course, course_id)
+            if course:
+                course.status = "error"
+                session.add(course)
+                session.commit()
+        except Exception as db_e:
+            print(f"[Task] Failed to update error status: {db_e}")
+
+
+@app.delete("/api/courses/{course_id}")
+async def delete_course(course_id: int, session: Session = Depends(get_session)):
+    course = session.get(Course, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    # Delete associated files (optional, but good practice)
+    # Assuming we stored filename or can derive it. 
+    # Current model doesn't store filename explicitly other than title maybe.
+    # Let's skip file deletion for now to avoid deleting wrong files, 
+    # or we can add filename to Course model later.
+    return {"status": "accepted", "message": "Generation task started"}
+
+def run_generation_task(course_id: int, filename: str):
+    """
+    Wrapper to create a new session for the background task
+    """
+    from .database import engine
+    with Session(engine) as session:
+        process_course_generation(course_id, filename, session)
+
+@app.get("/api/courses/{course_id}/chapters", response_model=list[Chapter])
+async def get_course_chapters(course_id: int, session: Session = Depends(get_session)):
+    chapters = session.exec(select(Chapter).where(Chapter.course_id == course_id)).all()
+    return chapters
+
+@app.get("/api/chapters/{chapter_id}/quiz", response_model=list[QuizReadWithQuestions])
+async def get_chapter_quiz(chapter_id: int, session: Session = Depends(get_session)):
+    quizzes = session.exec(select(Quiz).where(Quiz.chapter_id == chapter_id)).all()
+    return quizzes
 
 @app.get("/api/debug/manifest")
 async def debug_manifest():
