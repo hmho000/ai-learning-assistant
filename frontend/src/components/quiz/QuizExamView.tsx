@@ -62,19 +62,24 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
     // Need to adapt calcScore to handle this structure or adapt the structure to calcScore
     // For simplicity, let's adapt the structure to match what calcScore expects (legacy)
     const legacyQuizFormat = {
-      title: quiz.title,
+      meta: {
+        chapter_index: 0,
+        chapter_title: "Chapter",
+        quiz_title: quiz.title,
+        quiz_description: "Generated Quiz"
+      },
       multiple_choice: multipleChoiceQuestions.map(q => ({
         id: q.id,
         question: q.stem,
         options: q.options_json ? JSON.parse(q.options_json) : [],
         answer: q.answer,
-        explanation: q.explanation
+        explanation: q.explanation || ""
       })),
       fill_in_blank: fillInBlankQuestions.map(q => ({
         id: q.id,
         question: q.stem,
         answer: q.answer,
-        explanation: q.explanation
+        explanation: q.explanation || ""
       }))
     };
 
@@ -172,19 +177,24 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
       {submitted && scoreResult && (
         <QuizExamSummary
           quiz={{
-            title: quiz.title,
+            meta: {
+              chapter_index: 0,
+              chapter_title: "Chapter",
+              quiz_title: quiz.title,
+              quiz_description: "Generated Quiz"
+            },
             multiple_choice: multipleChoiceQuestions.map(q => ({
               id: q.id,
               question: q.stem,
               options: q.options_json ? JSON.parse(q.options_json) : [],
               answer: q.answer,
-              explanation: q.explanation
+              explanation: q.explanation || ""
             })),
             fill_in_blank: fillInBlankQuestions.map(q => ({
               id: q.id,
               question: q.stem,
               answer: q.answer,
-              explanation: q.explanation
+              explanation: q.explanation || ""
             }))
           }}
           answers={answers}

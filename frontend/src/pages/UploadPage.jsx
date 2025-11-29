@@ -38,10 +38,10 @@ export default function UploadPage() {
             setCourseId(cid);
             addLog(`上传成功: ${uploadRes.filename}`);
 
-            // 2. Trigger Generation
-            addLog("正在触发 AI 生成任务...");
-            await generateCourse(cid);
-            addLog("任务已提交，正在后台处理...");
+            // 2. Trigger Parsing
+            addLog("正在解析章节...");
+            await parseCourse(cid);
+            addLog("解析任务已提交...");
 
             // 3. Poll for progress
             let attempts = 0;
@@ -53,16 +53,11 @@ export default function UploadPage() {
                     const chapters = await fetchChapters(cid);
                     if (chapters.length > 0) {
                         addLog(`已解析 ${chapters.length} 个章节`);
-
-                        // Check if quizzes are generated for the first chapter
-                        const quizzes = await fetchChapterQuiz(chapters[0].id);
-                        if (quizzes.length > 0) {
-                            addLog("AI 出题完成！");
-                            clearInterval(pollInterval);
-                            setStep('complete');
-                        } else {
-                            addLog(`正在生成题目... (尝试 ${attempts}/${maxAttempts})`);
-                        }
+                        clearInterval(pollInterval);
+                        addLog("即将跳转到配置页面...");
+                        setTimeout(() => {
+                            navigate(`/course/${cid}/config`);
+                        }, 1000);
                     } else {
                         addLog(`正在解析 PDF... (尝试 ${attempts}/${maxAttempts})`);
                     }
@@ -97,14 +92,22 @@ export default function UploadPage() {
                             onClick={() => fileInputRef.current?.click()}
                             onDragOver={(e) => {
                                 e.preventDefault();
+                                e.stopPropagation();
+                                setIsDragging(true);
+                            }}
+                            onDragEnter={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                                 setIsDragging(true);
                             }}
                             onDragLeave={(e) => {
                                 e.preventDefault();
+                                e.stopPropagation();
                                 setIsDragging(false);
                             }}
                             onDrop={(e) => {
                                 e.preventDefault();
+                                e.stopPropagation();
                                 setIsDragging(false);
                                 if (e.dataTransfer.files && e.dataTransfer.files[0]) {
                                     const droppedFile = e.dataTransfer.files[0];
@@ -128,7 +131,7 @@ export default function UploadPage() {
                                 <Upload size={32} />
                             </div>
                             <p className="text-lg font-medium text-gray-900">点击或拖拽上传 PDF 教材</p>
-                            <p className="text-gray-500 mt-2">支持 PDF 格式，最大 50MB</p>
+                            <p className="text-gray-500 mt-2">支持 PDF 格式，最大 200MB</p>
                         </div>
 
                         {file && (

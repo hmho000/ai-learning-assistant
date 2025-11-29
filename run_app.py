@@ -27,8 +27,27 @@ def open_browser_delayed():
         print("请手动访问: http://127.0.0.1:8000")
 
 
+def load_env():
+    """Load environment variables from .env file"""
+    env_path = ".env"
+    if os.path.exists(env_path):
+        print(f"[INFO] Loading environment variables from {env_path}")
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                try:
+                    key, value = line.split("=", 1)
+                    os.environ[key.strip()] = value.strip()
+                except ValueError:
+                    pass
+
 def main() -> None:
     """启动 uvicorn 服务并在浏览器中打开首页。"""
+    # Load .env first
+    load_env()
+    
     # 处理打包后的路径：如果是 PyInstaller 打包的 exe，使用 exe 所在目录
     if getattr(sys, "frozen", False):
         # 打包后的 exe 模式
@@ -76,14 +95,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-{
-  "cells": [],
-  "metadata": {
-    "language_info": {
-      "name": "python"
-    }
-  },
-  "nbformat": 4,
-  "nbformat_minor": 2
-}

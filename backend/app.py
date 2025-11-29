@@ -106,9 +106,10 @@ async def api_health():
     return {"status": "ok"}
 
 @app.post("/api/upload")
-async def upload_file(file: UploadFile = File(...), session: Session = Depends(get_session)):
+def upload_file(file: UploadFile = File(...), session: Session = Depends(get_session)):
     """
     上传 PDF 文件，创建 Course 记录
+    注意：使用同步 def 让 FastAPI 在线程池中运行，避免大文件上传阻塞事件循环
     """
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
@@ -118,6 +119,7 @@ async def upload_file(file: UploadFile = File(...), session: Session = Depends(g
     upload_dir.mkdir(exist_ok=True)
     file_path = upload_dir / file.filename
     
+    # 使用 shutil.copyfileobj 高效写入
     with file_path.open("wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
@@ -293,9 +295,12 @@ async def delete_course(course_id: int, session: Session = Depends(get_session))
     # Delete associated files (optional, but good practice)
     # Assuming we stored filename or can derive it. 
     # Current model doesn't store filename explicitly other than title maybe.
-    # Let's skip file deletion for now to avoid deleting wrong files, 
-    # or we can add filename to Course model later.
-    return {"status": "accepted", "message": "Generation task started"}
+    # Let's skip file deletion for now to avoid deleting wrong files.
+    
+    session.delete(course)
+    session.commit()
+    
+    return {"status": "success", "message": "Course deleted successfully"}
 
 def run_generation_task(course_id: int, filename: str):
     """
@@ -304,6 +309,46 @@ def run_generation_task(course_id: int, filename: str):
     from .database import engine
     with Session(engine) as session:
         process_course_generation(course_id, filename, session)
+
+def run_parsing_task(course_id: int, filename: str):
+    from .database import engine
+    with Session(engine) as session:
+        process_course_parsing(course_id, filename, session)
+
+def run_custom_generation_task(course_id: int, config: dict):
+    from .database import engine
+    with Session(engine) as session:
+        process_course_generation_custom(course_id, config, session)
+
+@app.post("/api/courses/{course_id}/parse")
+async def parse_course_endpoint(course_id: int, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    course = session.get(Course, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    # Assuming filename is stored or we use title as filename (legacy)
+    # Ideally we should store filename. For now using title + .pdf as per upload logic
+    filename = f"{course.title}.pdf"
+    
+    course.status = "parsing"
+    session.add(course)
+    session.commit()
+    
+    background_tasks.add_task(run_parsing_task, course_id, filename)
+    return {"status": "accepted", "message": "Parsing task started"}
+
+@app.post("/api/courses/{course_id}/generate")
+async def generate_course_endpoint(course_id: int, config: dict, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    course = session.get(Course, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    course.status = "generating"
+    session.add(course)
+    session.commit()
+    
+    background_tasks.add_task(run_custom_generation_task, course_id, config)
+    return {"status": "accepted", "message": "Generation task started"}
 
 @app.get("/api/courses/{course_id}/chapters", response_model=list[Chapter])
 async def get_course_chapters(course_id: int, session: Session = Depends(get_session)):
@@ -403,33 +448,5 @@ async def serve_spa(full_path: str):
         "React 前端尚未构建，请先在 frontend/ 目录运行 `npm run build` 再重试。",
         status_code=500,
     )
-
-
-@app.get("/api/sample-quiz")
-async def api_sample_quiz():
-    """
-    示例题目数据（前端可以先用这个接口打通联调），后续替换为真实数据。
-    """
-    return {
-        "chapterTitle": "第 1 章 绪论（示例）",
-        "questions": [
-            {
-                "id": "q1",
-                "type": "single_choice",
-                "stem": "在顺序表中，访问第 i 个元素的时间复杂度是？",
-                "options": ["O(1)", "O(log n)", "O(n)", "O(n log n)"],
-                "answer": 0,
-                "analysis": "顺序表支持按下标随机访问，因此是 O(1)。",
-            },
-            {
-                "id": "q2",
-                "type": "single_choice",
-                "stem": "以下哪种结构更适合实现队列？",
-                "options": ["顺序表", "链表", "栈", "树"],
-                "answer": 1,
-                "analysis": "链表可以方便地在队头/队尾进行插入删除，适合队列实现。",
-            },
-        ],
-    }
 
 

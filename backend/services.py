@@ -8,6 +8,9 @@ from typing import List, Dict, Any, Optional
 from .models import Chapter, Quiz, Question
 from sqlmodel import Session
 
+# === Constants ===
+DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
+
 # === PDF Parsing Service ===
 
 def extract_text_from_pdf(pdf_path: str) -> str:
@@ -74,7 +77,12 @@ def generate_quiz_for_chapter(chapter_text: str, chapter_title: str, num_mc: int
     """
     调用 DeepSeek 生成题目
     """
-    api_key = os.getenv("DEEPSEEK_API_KEY") or DEFAULT_API_KEY
+    # 优先从环境变量获取，如果没有则报错
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        print("Error: DEEPSEEK_API_KEY not found in environment variables.")
+        # Return empty structure to avoid crashing
+        return {"multiple_choice": [], "fill_in_blank": []}
     
     prompt = f"""
 你是一名专业的教育测评专家。
