@@ -45,12 +45,18 @@ REM === 2. 构建前端 ===
 echo.
 echo [2/4] 构建前端（npm install ^& npm run build）
 cd frontend
-REM 如果用的是 yarn 或 pnpm，可以自行替换下面两行为 yarn / pnpm
-call npm install
-IF ERRORLEVEL 1 (
-  echo [ERROR] npm install 失败，请确认 Node.js/npm 安装是否正常。
-  pause
-  exit /b 1
+
+REM 优化：如果 node_modules 存在，跳过 npm install
+if exist node_modules (
+  echo [INFO] 检测到 node_modules，跳过 npm install...
+) else (
+  REM 如果用的是 yarn 或 pnpm，可以自行替换下面两行为 yarn / pnpm
+  call npm install
+  IF ERRORLEVEL 1 (
+    echo [ERROR] npm install 失败，请确认 Node.js/npm 安装是否正常。
+    pause
+    exit /b 1
+  )
 )
 
 call npm run build
@@ -78,6 +84,10 @@ if exist dist\run_app.exe (
   echo 已删除旧的 exe 文件。
 )
 
+REM 清理旧的构建临时目录
+if exist build rmdir /S /Q build
+echo 已清理 build 临时目录。
+
 call py -m pip show pyinstaller >nul 2>nul
 IF ERRORLEVEL 1 (
   echo 未检测到 PyInstaller，正在自动安装...
@@ -90,7 +100,7 @@ IF ERRORLEVEL 1 (
 )
 
 REM 使用 run_app.spec 文件打包（包含必要的隐藏导入配置）
-call py -m PyInstaller run_app.spec
+call py -m PyInstaller run_app.spec --clean
 IF ERRORLEVEL 1 (
   echo [ERROR] PyInstaller 打包失败
   echo.
@@ -102,11 +112,25 @@ IF ERRORLEVEL 1 (
   exit /b 1
 )
 
-REM === 4. 将前端构建产物复制到 exe 同级目录的 frontend/dist（供打包程序访问静态资源） ===
+REM === 4. 资源整理 ===
 echo.
-echo [4/4] 拷贝前端静态资源到 dist\frontend\dist
+echo [4/4] 整理资源文件
+
+REM 复制 .env.template 为 .env (如果不存在)
+if not exist dist\.env (
+    if exist .env (
+        echo 复制本地 .env 到 dist 目录...
+        copy .env dist\.env >nul
+    ) else (
+        echo 复制 .env.template 到 dist 目录...
+        copy .env.template dist\.env >nul
+    )
+)
+
+REM 注意：run_app.spec 已经配置了将 frontend/dist 打包进 exe (如果是单文件模式)
+REM 但为了保险起见，或者如果是 onedir 模式，我们通常还是会保留这个复制步骤
 if not exist dist\frontend mkdir dist\frontend
-xcopy /E /I /Y "frontend\dist" "dist\frontend\dist"
+xcopy /E /I /Y "frontend\dist" "dist\frontend\dist" >nul
 
 echo.
 echo ============================================
