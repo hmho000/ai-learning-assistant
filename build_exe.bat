@@ -130,7 +130,13 @@ if not exist dist\.env (
 REM 注意：run_app.spec 已经配置了将 frontend/dist 打包进 exe (如果是单文件模式)
 REM 但为了保险起见，或者如果是 onedir 模式，我们通常还是会保留这个复制步骤
 if not exist dist\frontend mkdir dist\frontend
-xcopy /E /I /Y "frontend\dist" "dist\frontend\dist" >nul
+REM 使用 robocopy 多线程复制，速度更快
+robocopy "frontend\dist" "dist\frontend\dist" /E /MT:8 /NFL /NDL /NJH /NJS >nul
+if %ERRORLEVEL% GEQ 8 (
+    echo [WARN] Robocopy 复制可能遇到错误，错误码: %ERRORLEVEL%
+) else (
+    echo [INFO] 前端资源复制完成
+)
 
 echo.
 echo ============================================
