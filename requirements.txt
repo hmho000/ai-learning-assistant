@@ -2,6 +2,9 @@ fastapi
 uvicorn
 pyinstaller
 sqlmodel
+sqlmodel
 python-multipart
+pymupdf
+requests
 
 
