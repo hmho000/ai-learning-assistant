@@ -1,333 +1,145 @@
 import { useEffect, useState } from "react";
-import QuestionViewer from "../components/QuestionViewer.jsx";
+import { useParams, useNavigate } from "react-router-dom";
 import QuizExamView from "../components/quiz/QuizExamView";
-import { loadQuizJsonByChapter } from "../utils/quizUtils";
-
-const normalizeChapters = (chapters = []) =>
-  chapters.map((ch, idx) => {
-    const fallbackSource =
-      ch.sourceTitle ||
-      ch.label ||
-      ch.title ||
-      (chapters.length === 1 ? "全文" : `章节 ${ch.id ?? idx + 1}`);
-    const fallbackQuiz = ch.quizTitle || ch.title || ch.label || fallbackSource;
-    return {
-      id: ch.id ?? idx + 1,
-      sourceTitle: fallbackSource,
-      quizTitle: fallbackQuiz,
-      file: ch.file,
-      description: ch.description || "",
-    };
-  });
-
-const normalizeCourses = (data) => {
-  if (Array.isArray(data.courses) && data.courses.length > 0) {
-    return data.courses.map((course, idx) => ({
-      id: course.id || `course-${idx + 1}`,
-      name: course.name || course.sourceFile || `课程 ${idx + 1}`,
-      sourceFile: course.sourceFile || course.name || "",
-      chapters: normalizeChapters(course.chapters || []),
-    }));
-  }
-
-  if (data.course || data.chapters) {
-    return [
-      {
-        id: "default-course",
-        name: data.course || "未命名课程",
-        sourceFile: data.sourceFile || data.course || "",
-        chapters: normalizeChapters(data.chapters || []),
-      },
-    ];
-  }
-
-  return [];
-};
+import { fetchCourses, fetchChapters, fetchChapterQuiz } from "../api";
+import { ArrowLeft } from "lucide-react";
 
 const QuestionsPage = () => {
-  const [courses, setCourses] = useState([]);
-  const [selectedCourseId, setSelectedCourseId] = useState(null);
+  const { id } = useParams(); // courseId
+  const navigate = useNavigate();
+
+  const [course, setCourse] = useState(null);
+  const [chapters, setChapters] = useState([]);
   const [selectedChapterId, setSelectedChapterId] = useState(null);
-  const [markdownText, setMarkdownText] = useState("");
-  const [loading, setLoading] = useState(false);
+
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [manifestLoading, setManifestLoading] = useState(true);
-  const [viewMode, setViewMode] = useState("read"); // "read" | "quiz"
+
   const [quizData, setQuizData] = useState(null);
   const [quizLoading, setQuizLoading] = useState(false);
-  const [quizError, setQuizError] = useState("");
 
-  const selectedCourse = courses.find((course) => course.id === selectedCourseId);
-  const selectedChapter =
-    selectedCourse?.chapters.find((ch) => ch.id === selectedChapterId) || null;
-
+  // 1. Load Course & Chapters
   useEffect(() => {
-    const loadManifest = async () => {
+    const loadData = async () => {
+      if (!id) return;
+      setLoading(true);
       try {
-        // 添加时间戳防止缓存
-        const response = await fetch(`/questions/manifest.json?t=${Date.now()}`);
-        if (!response.ok) {
-          throw new Error(`无法加载课程清单: ${response.status} ${response.statusText}`);
+        // Fetch all courses to find the current one (API optimization needed later)
+        const courses = await fetchCourses();
+        const currentCourse = courses.find(c => c.id === parseInt(id));
+
+        if (!currentCourse) {
+          throw new Error("Course not found");
         }
-        const data = await response.json();
-        console.log("[DEBUG] manifest.json 数据:", data);
-        const normalized = normalizeCourses(data);
-        console.log("[DEBUG] 规范化后的课程数据:", normalized);
-        setCourses(normalized);
-        if (normalized.length > 0) {
-          setSelectedCourseId(normalized[0].id);
-          const firstChapter = normalized[0].chapters[0];
-          if (firstChapter) {
-            setSelectedChapterId(firstChapter.id);
-          }
-        } else {
-          console.warn("[DEBUG] 规范化后的课程数据为空");
-          setError("课程数据为空，请检查 manifest.json 文件格式。");
+        setCourse(currentCourse);
+
+        const chs = await fetchChapters(parseInt(id));
+        setChapters(chs);
+
+        if (chs.length > 0) {
+          setSelectedChapterId(chs[0].id);
         }
       } catch (err) {
-        console.error("加载 manifest 失败：", err);
-        setError(`无法加载课程清单：${err.message}`);
+        console.error(err);
+        setError("无法加载课程数据");
       } finally {
-        setManifestLoading(false);
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, [id]);
+
+  // 2. Load Quiz when chapter changes
+  useEffect(() => {
+    const loadQuiz = async () => {
+      if (!selectedChapterId) return;
+
+      setQuizLoading(true);
+      setQuizData(null);
+      try {
+        const quizzes = await fetchChapterQuiz(selectedChapterId);
+        // Merge all questions from all quizzes in this chapter
+        // For now, we just take the first quiz or merge them
+        if (quizzes.length > 0) {
+          // Flatten questions if multiple quizzes exist for a chapter
+          // But usually 1 chapter -> 1 quiz in our current logic
+          // Let's just take the first one for simplicity or merge questions
+          const allQuestions = quizzes.flatMap(q => q.questions || []);
+
+          setQuizData({
+            title: quizzes[0].title,
+            questions: allQuestions
+          });
+        } else {
+          setQuizData(null);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setQuizLoading(false);
       }
     };
 
-    loadManifest();
-  }, []);
-
-  const loadMarkdownForChapter = async (chapter) => {
-    if (!chapter) return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(`/questions/${chapter.file}`);
-      if (!response.ok) {
-        throw new Error(`无法加载题库文件：${chapter.file}`);
-      }
-      const text = await response.text();
-      setMarkdownText(text);
-    } catch (err) {
-      console.error("加载 Markdown 失败：", err);
-      setError(err.message || "加载题库失败，请稍后重试。");
-      setMarkdownText("");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (selectedChapter) {
-      loadMarkdownForChapter(selectedChapter);
-    }
-  }, [selectedChapterId, selectedCourseId]);
-
-  // 章节切换时，重置模式和题库数据
-  useEffect(() => {
-    setViewMode("read");
-    setQuizData(null);
-    setQuizError("");
+    loadQuiz();
   }, [selectedChapterId]);
 
-  const handleCourseChange = (e) => {
-    const newCourseId = e.target.value;
-    setSelectedCourseId(newCourseId);
-    const nextCourse = courses.find((course) => course.id === newCourseId);
-    const firstChapter = nextCourse?.chapters[0];
-    setSelectedChapterId(firstChapter ? firstChapter.id : null);
-  };
-
   const handleChapterChange = (e) => {
-    const newId = parseInt(e.target.value, 10);
-    setSelectedChapterId(newId);
+    setSelectedChapterId(parseInt(e.target.value));
   };
 
-  const displaySourceTitle =
-    selectedChapter?.sourceTitle ||
-    (selectedCourse?.chapters.length === 1
-      ? "全文"
-      : selectedCourse?.name || selectedCourse?.sourceFile || "未命名章节");
-
-  const displayQuizTitle =
-    selectedChapter?.quizTitle && selectedChapter?.quizTitle !== displaySourceTitle
-      ? selectedChapter.quizTitle
-      : "";
-
-  const canRenderViewer = !manifestLoading && selectedCourse && selectedChapter;
-  const viewerHeading = selectedChapter
-    ? `${selectedCourse?.name || selectedCourse?.sourceFile || "未命名课程"} · ${
-        selectedChapter.quizTitle || selectedChapter.sourceTitle || "AI 题库"
-      }`
-    : "";
+  if (loading) return <div className="p-8 text-center text-gray-500">加载中...</div>;
+  if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-100 via-slate-50 to-white py-10 px-4">
+    <main className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-5xl mx-auto space-y-6">
-        <header className="bg-white rounded-2xl shadow-subtle px-6 py-6 md:px-10 md:py-8">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm text-brand-blue font-semibold uppercase tracking-[0.2em]">
-                AI Practice Library
-              </p>
-              <h1 className="text-3xl font-bold text-slate-900 mt-2">
-                {displaySourceTitle ? `《${displaySourceTitle}》 ` : ""}
-                {displayQuizTitle}
-              </h1>
-              {selectedChapter?.description ? (
-                <p className="text-slate-500 mt-1">{selectedChapter.description}</p>
-              ) : (
-                <p className="text-slate-500 mt-1">
-                  支持多课程、多语言章节标题，自动适配“全文”或英文章节结构。
-                </p>
-              )}
-            </div>
-            <div className="flex flex-col w-full md:w-[520px] gap-3">
-              <label className="text-sm font-medium text-slate-600">选择课程</label>
-              <select
-                value={selectedCourseId || ""}
-                onChange={handleCourseChange}
-                disabled={manifestLoading || courses.length === 0}
-                className="rounded-xl border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-inner focus:outline-none focus:ring-2 focus:ring-brand-blue/60 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {courses.length === 0 && <option value="">暂无课程</option>}
-                {courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.name}
-                  </option>
-                ))}
-              </select>
-              <label className="text-sm font-medium text-slate-600">选择章节</label>
-              <select
-                value={selectedChapterId || ""}
-                onChange={handleChapterChange}
-                disabled={
-                  manifestLoading ||
-                  !selectedCourse ||
-                  (selectedCourse?.chapters.length || 0) === 0
-                }
-                className="rounded-xl border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-inner focus:outline-none focus:ring-2 focus:ring-brand-blue/60 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {(!selectedCourse || selectedCourse.chapters.length === 0) && (
-                  <option value="">暂无章节</option>
-                )}
-                {selectedCourse?.chapters.map((chapter) => (
-                  <option key={chapter.id} value={chapter.id}>
-                    {chapter.sourceTitle || chapter.quizTitle || `章节 ${chapter.id}`}
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* Header */}
+        <header className="bg-white rounded-2xl shadow-sm p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <button
+              onClick={() => navigate('/')}
+              className="flex items-center text-gray-500 hover:text-gray-900 mb-2 transition-colors"
+            >
+              <ArrowLeft size={16} className="mr-1" /> 返回课程列表
+            </button>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {course?.title}
+            </h1>
+            <p className="text-gray-500 text-sm mt-1">{course?.description}</p>
+          </div>
+
+          <div className="w-full md:w-64">
+            <label className="block text-xs font-medium text-gray-500 mb-1 uppercase">当前章节</label>
+            <select
+              value={selectedChapterId || ""}
+              onChange={handleChapterChange}
+              className="w-full rounded-lg border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {chapters.map(ch => (
+                <option key={ch.id} value={ch.id}>
+                  {ch.title}
+                </option>
+              ))}
+            </select>
           </div>
         </header>
 
-        {manifestLoading && (
-          <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-slate-500">
-            正在加载课程与章节清单…
-          </div>
-        )}
-
-        {!manifestLoading && !selectedCourse && (
-          <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-slate-500">
-            当前暂无可用课程，请先运行 Python 脚本生成题库。
-          </div>
-        )}
-
-        {canRenderViewer && (
-          <>
-            {loading && (
-              <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-slate-500">
-                正在加载题库，请稍候…
-              </div>
-            )}
-
-            {!loading && error && (
-              <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-red-500">
-                {error}
-              </div>
-            )}
-
-            {!loading && !error && markdownText === "" && (
-              <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-slate-500">
-                当前章节暂无题库，请稍后再试。
-              </div>
-            )}
-
-            {!loading && !error && markdownText !== "" && (
-              <>
-                <div className="flex gap-2 mb-4">
-                  <button
-                    className={`px-3 py-1 rounded ${
-                      viewMode === "read"
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-200"
-                    }`}
-                    onClick={() => setViewMode("read")}
-                  >
-                    阅读题库
-                  </button>
-
-                  <button
-                    className={`px-3 py-1 rounded ${
-                      viewMode === "quiz"
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-200"
-                    }`}
-                    onClick={async () => {
-                      setViewMode("quiz");
-                      if (!quizData) {
-                        try {
-                          setQuizLoading(true);
-                          setQuizError("");
-                          const data = await loadQuizJsonByChapter(
-                            selectedChapterId
-                          );
-                          setQuizData(data);
-                        } catch (err) {
-                          console.error(err);
-                          setQuizError("加载题库失败，请稍后重试。");
-                        } finally {
-                          setQuizLoading(false);
-                        }
-                      }
-                    }}
-                  >
-                    开始答题
-                  </button>
-                </div>
-
-                {viewMode === "read" && (
-                  <QuestionViewer
-                    markdownText={markdownText}
-                    heading={viewerHeading}
-                    key={`${selectedCourseId}-${selectedChapterId}`}
-                  />
-                )}
-
-                {viewMode === "quiz" && (
-                  <>
-                    {quizLoading && (
-                      <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-slate-500">
-                        题库加载中...
-                      </div>
-                    )}
-                    {quizError && (
-                      <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-subtle p-8 text-center text-red-500">
-                        {quizError}
-                      </div>
-                    )}
-                    {quizData && (
-                      <QuizExamView
-                        quiz={quizData}
-                        chapterId={selectedChapterId}
-                        courseId={selectedCourseId}
-                      />
-                    )}
-                  </>
-                )}
-              </>
-            )}
-          </>
-        )}
+        {/* Content */}
+        <div className="bg-white rounded-2xl shadow-sm min-h-[500px] p-6">
+          {quizLoading ? (
+            <div className="text-center py-20 text-gray-400">正在加载题目...</div>
+          ) : quizData && quizData.questions && quizData.questions.length > 0 ? (
+            <QuizExamView
+              quiz={quizData}
+              chapterId={selectedChapterId}
+              courseId={course?.id}
+            />
+          ) : (
+            <div className="text-center py-20 text-gray-400">
+              <p>本章节暂无题目</p>
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );

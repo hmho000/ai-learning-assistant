@@ -1,15 +1,30 @@
-import React, { useState } from "react";
-import { QuizData, UserAnswer } from "../../types/quiz";
+import React, { useState, useMemo } from "react";
+import { UserAnswer } from "../../types/quiz";
 import MultipleChoiceQuestionExam from "./MultipleChoiceQuestionExam";
 import FillInBlankQuestionExam from "./FillInBlankQuestionExam";
 import QuizExamSummary from "./QuizExamSummary";
 import { saveQuizResult } from "../../utils/quizStorage";
 import { calcScore } from "../../utils/quizUtils";
 
+// Define local interfaces for the API data structure if not imported
+interface Question {
+  id: number;
+  type: string;
+  stem: string;
+  options_json?: string;
+  answer: string;
+  explanation?: string;
+}
+
+interface QuizData {
+  title: string;
+  questions: Question[];
+}
+
 interface QuizExamViewProps {
   quiz: QuizData;
   chapterId: number;
-  courseId?: string;
+  courseId?: number;
 }
 
 const QuizExamView: React.FC<QuizExamViewProps> = ({
@@ -20,9 +35,16 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
   const [answers, setAnswers] = useState<UserAnswer[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState<number | null>(null);
-  const [scoreResult, setScoreResult] = useState<ReturnType<typeof calcScore> | null>(null);
+  const [scoreResult, setScoreResult] = useState<any>(null);
 
-  const { multiple_choice, fill_in_blank } = quiz;
+  // Filter questions by type
+  const multipleChoiceQuestions = useMemo(() =>
+    quiz.questions.filter(q => q.type === "multiple_choice"),
+    [quiz.questions]);
+
+  const fillInBlankQuestions = useMemo(() =>
+    quiz.questions.filter(q => q.type === "fill_in_blank"),
+    [quiz.questions]);
 
   const handleAnswerChange = (questionId: string, value: string | string[]) => {
     setAnswers((prev) => {
@@ -37,13 +59,32 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
   };
 
   const handleSubmit = () => {
-    const result = calcScore(quiz, answers);
+    // Need to adapt calcScore to handle this structure or adapt the structure to calcScore
+    // For simplicity, let's adapt the structure to match what calcScore expects (legacy)
+    const legacyQuizFormat = {
+      title: quiz.title,
+      multiple_choice: multipleChoiceQuestions.map(q => ({
+        id: q.id,
+        question: q.stem,
+        options: q.options_json ? JSON.parse(q.options_json) : [],
+        answer: q.answer,
+        explanation: q.explanation
+      })),
+      fill_in_blank: fillInBlankQuestions.map(q => ({
+        id: q.id,
+        question: q.stem,
+        answer: q.answer,
+        explanation: q.explanation
+      }))
+    };
+
+    const result = calcScore(legacyQuizFormat, answers);
     setScore(result.score);
     setScoreResult(result);
     setSubmitted(true);
 
     saveQuizResult({
-      courseId: courseId ?? "default-course",
+      courseId: courseId ? String(courseId) : "default-course",
       chapterId,
       score: result.score,
       total: result.total,
@@ -55,37 +96,62 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
 
   return (
     <div className="space-y-6">
-      <section>
-        <h2 className="text-xl font-semibold mb-2">一、选择题</h2>
-        {multiple_choice.map((q, index) => (
-          <MultipleChoiceQuestionExam
-            key={q.id}
-            index={index + 1}
-            question={q}
-            value={answers.find((a) => a.questionId === `mc-${q.id}`)?.value ?? ""}
-            onChange={(value) => handleAnswerChange(`mc-${q.id}`, value)}
-            disabled={submitted}
-            showAnswer={submitted}
-          />
-        ))}
-      </section>
+      {multipleChoiceQuestions.length > 0 && (
+        <section>
+          <h2 className="text-xl font-semibold mb-2">一、选择题</h2>
+          {multipleChoiceQuestions.map((q, index) => {
+            const options = q.options_json ? JSON.parse(q.options_json) : [];
+            // Adapt to component props
+            const qProps = {
+              id: q.id,
+              question: q.stem,
+              options: options,
+              answer: q.answer,
+              explanation: q.explanation
+            };
 
-      <section>
-        <h2 className="text-xl font-semibold mb-2">二、填空题</h2>
-        {fill_in_blank.map((q, index) => (
-          <FillInBlankQuestionExam
-            key={q.id}
-            index={index + 1}
-            question={q}
-            value={
-              (answers.find((a) => a.questionId === `fb-${q.id}`)?.value as string) ?? ""
-            }
-            onChange={(value) => handleAnswerChange(`fb-${q.id}`, value)}
-            disabled={submitted}
-            showAnswer={submitted}
-          />
-        ))}
-      </section>
+            return (
+              <MultipleChoiceQuestionExam
+                key={q.id}
+                index={index + 1}
+                question={qProps}
+                value={answers.find((a) => a.questionId === `mc-${q.id}`)?.value ?? ""}
+                onChange={(value) => handleAnswerChange(`mc-${q.id}`, value)}
+                disabled={submitted}
+                showAnswer={submitted}
+              />
+            );
+          })}
+        </section>
+      )}
+
+      {fillInBlankQuestions.length > 0 && (
+        <section>
+          <h2 className="text-xl font-semibold mb-2">二、填空题</h2>
+          {fillInBlankQuestions.map((q, index) => {
+            const qProps = {
+              id: q.id,
+              question: q.stem,
+              answer: q.answer,
+              explanation: q.explanation
+            };
+
+            return (
+              <FillInBlankQuestionExam
+                key={q.id}
+                index={index + 1}
+                question={qProps}
+                value={
+                  (answers.find((a) => a.questionId === `fb-${q.id}`)?.value as string) ?? ""
+                }
+                onChange={(value) => handleAnswerChange(`fb-${q.id}`, value)}
+                disabled={submitted}
+                showAnswer={submitted}
+              />
+            );
+          })}
+        </section>
+      )}
 
       <div className="flex gap-4 items-center">
         {!submitted && (
@@ -105,7 +171,22 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
 
       {submitted && scoreResult && (
         <QuizExamSummary
-          quiz={quiz}
+          quiz={{
+            title: quiz.title,
+            multiple_choice: multipleChoiceQuestions.map(q => ({
+              id: q.id,
+              question: q.stem,
+              options: q.options_json ? JSON.parse(q.options_json) : [],
+              answer: q.answer,
+              explanation: q.explanation
+            })),
+            fill_in_blank: fillInBlankQuestions.map(q => ({
+              id: q.id,
+              question: q.stem,
+              answer: q.answer,
+              explanation: q.explanation
+            }))
+          }}
           answers={answers}
           score={score ?? 0}
           scoreResult={scoreResult}
@@ -116,4 +197,3 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
 };
 
 export default QuizExamView;
-

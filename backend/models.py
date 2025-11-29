@@ -1,0 +1,63 @@
+from datetime import datetime
+from typing import List, Optional
+from sqlmodel import Field, Relationship, SQLModel
+
+# === Models ===
+
+class Course(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    description: Optional[str] = None
+    status: str = Field(default="processing")
+    created_at: datetime = Field(default_factory=datetime.now)
+    
+    chapters: List["Chapter"] = Relationship(back_populates="course")
+
+class Chapter(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    course_id: int = Field(foreign_key="course.id")
+    title: str
+    index: int  # 章节序号
+    content_text: Optional[str] = Field(default=None) # 解析后的纯文本
+    
+    course: Course = Relationship(back_populates="chapters")
+    quizzes: List["Quiz"] = Relationship(back_populates="chapter")
+
+class Quiz(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    chapter_id: int = Field(foreign_key="chapter.id")
+    title: str
+    description: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+    
+    chapter: Chapter = Relationship(back_populates="quizzes")
+    questions: List["Question"] = Relationship(back_populates="quiz")
+
+class Question(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    quiz_id: int = Field(foreign_key="quiz.id")
+    type: str  # "multiple_choice" or "fill_in_blank"
+    
+    # 题目内容
+    stem: str # 题干
+    options_json: Optional[str] = None # JSON string for options ["A...", "B..."]
+    answer: str
+    explanation: Optional[str] = None
+    
+    quiz: Quiz = Relationship(back_populates="questions")
+
+# === Read Schemas ===
+
+class QuestionRead(SQLModel):
+    id: int
+    type: str
+    stem: str
+    options_json: Optional[str] = None
+    answer: str
+    explanation: Optional[str] = None
+
+class QuizReadWithQuestions(SQLModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    questions: List[QuestionRead] = []
