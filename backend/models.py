@@ -11,7 +11,7 @@ class Course(SQLModel, table=True):
     status: str = Field(default="processing")
     created_at: datetime = Field(default_factory=datetime.now)
     
-    chapters: List["Chapter"] = Relationship(back_populates="course")
+    chapters: List["Chapter"] = Relationship(back_populates="course", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 class Chapter(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -21,7 +21,7 @@ class Chapter(SQLModel, table=True):
     content_text: Optional[str] = Field(default=None) # 解析后的纯文本
     
     course: Course = Relationship(back_populates="chapters")
-    quizzes: List["Quiz"] = Relationship(back_populates="chapter")
+    quizzes: List["Quiz"] = Relationship(back_populates="chapter", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 class Quiz(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -31,7 +31,7 @@ class Quiz(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
     
     chapter: Chapter = Relationship(back_populates="quizzes")
-    questions: List["Question"] = Relationship(back_populates="quiz")
+    questions: List["Question"] = Relationship(back_populates="quiz", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 class Question(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
