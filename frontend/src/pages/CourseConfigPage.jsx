@@ -1,165 +1,213 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { fetchChapters, generateCourseCustom } from '../api';
-import { Loader2, CheckCircle, Settings, ArrowRight } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { fetchCourses, fetchChapters, generateCourseCustom } from "../api";
+import { ArrowLeft, BookOpen, Sparkles } from "lucide-react";
+import GenerationProgress from "../components/GenerationProgress";
 
-export default function CourseConfigPage() {
+const CourseConfigPage = () => {
     const { courseId } = useParams();
     const navigate = useNavigate();
+
+    const [course, setCourse] = useState(null);
     const [chapters, setChapters] = useState([]);
+    const [selectedChapterIds, setSelectedChapterIds] = useState([]);
+    const [numMc, setNumMc] = useState(5);
+    const [numFb, setNumFb] = useState(5);
+
     const [loading, setLoading] = useState(true);
-    const [selectedChapters, setSelectedChapters] = useState([]);
-    const [config, setConfig] = useState({
-        num_mc: 5,
-        num_fb: 5
-    });
-    const [submitting, setSubmitting] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
 
     useEffect(() => {
-        loadChapters();
+        const loadData = async () => {
+            if (!courseId) return;
+            try {
+                const courses = await fetchCourses();
+                const currentCourse = courses.find(c => c.id === parseInt(courseId));
+                setCourse(currentCourse);
+
+                const chs = await fetchChapters(parseInt(courseId));
+                setChapters(chs);
+                // Default select all
+                setSelectedChapterIds(chs.map(c => c.id));
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadData();
     }, [courseId]);
 
-    const loadChapters = async () => {
-        try {
-            const data = await fetchChapters(Number(courseId));
-            setChapters(data);
-            // Default select all
-            setSelectedChapters(data.map(c => c.id));
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
+    const toggleChapter = (id) => {
+        if (selectedChapterIds.includes(id)) {
+            setSelectedChapterIds(selectedChapterIds.filter(cid => cid !== id));
+        } else {
+            setSelectedChapterIds([...selectedChapterIds, id]);
         }
     };
 
-    const handleToggleChapter = (id) => {
-        setSelectedChapters(prev =>
-            prev.includes(id) ? prev.filter(cid => cid !== id) : [...prev, id]
-        );
-    };
+    const handleGenerate = async () => {
+        if (selectedChapterIds.length === 0) return;
 
-    const handleStartGeneration = async () => {
-        if (selectedChapters.length === 0) return;
-
-        setSubmitting(true);
+        setIsGenerating(true);
         try {
-            await generateCourseCustom(Number(courseId), {
-                chapter_ids: selectedChapters,
-                num_mc: config.num_mc,
-                num_fb: config.num_fb
+            await generateCourseCustom(parseInt(courseId), {
+                chapter_ids: selectedChapterIds,
+                num_mc: numMc,
+                num_fb: numFb
             });
-            // Redirect to dashboard or course page, maybe with a success param
-            navigate('/');
+            // GenerationProgress component will handle the rest
         } catch (err) {
             console.error(err);
-            setSubmitting(false);
+            alert("启动生成任务失败");
+            setIsGenerating(false);
         }
     };
 
-    if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                <Loader2 className="animate-spin text-blue-600" size={48} />
-            </div>
-        );
-    }
+    if (loading) return <div className="p-8 text-center text-gray-500">加载中...</div>;
 
     return (
-        <div className="min-h-screen bg-gray-50 p-8">
-            <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-8">
-                <div className="flex items-center gap-3 mb-8">
-                    <div className="p-3 bg-blue-100 text-blue-600 rounded-lg">
-                        <Settings size={24} />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">生成配置</h1>
-                        <p className="text-gray-500">选择需要生成的章节并设置题目数量</p>
+        <main className="min-h-screen bg-gray-50 py-8 px-4">
+            {isGenerating && (
+                <GenerationProgress
+                    courseId={courseId}
+                    onComplete={() => navigate(`/course/${courseId}`)}
+                />
+            )}
+
+            <div className="max-w-3xl mx-auto space-y-6">
+                {/* Header */}
+                <header className="bg-white rounded-2xl shadow-sm p-6">
+                    <button
+                        onClick={() => navigate('/')}
+                        className="flex items-center text-gray-500 hover:text-gray-900 mb-4 transition-colors"
+                    >
+                        <ArrowLeft size={16} className="mr-1" /> 返回首页
+                    </button>
+                    <h1 className="text-2xl font-bold text-gray-900">配置生成选项</h1>
+                    <p className="text-gray-500 mt-1">选择需要生成题目的章节及数量</p>
+                </header>
+
+                {/* Course Info */}
+                <div className="bg-white rounded-2xl shadow-sm p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-2">{course?.title}</h2>
+                    <p className="text-sm text-gray-500">{course?.description}</p>
+                </div>
+
+                {/* Configuration */}
+                <div className="bg-white rounded-2xl shadow-sm p-6">
+                    <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
+                        <Sparkles size={20} className="text-blue-600" />
+                        题目数量配置 (每章)
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                选择题数量
+                            </label>
+                            <input
+                                type="number"
+                                min="1"
+                                max="20"
+                                value={numMc}
+                                onChange={(e) => setNumMc(parseInt(e.target.value) || 0)}
+                                className="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                填空题数量
+                            </label>
+                            <input
+                                type="number"
+                                min="1"
+                                max="20"
+                                value={numFb}
+                                onChange={(e) => setNumFb(parseInt(e.target.value) || 0)}
+                                className="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                        </div>
                     </div>
                 </div>
 
-                <div className="space-y-8">
-                    {/* Question Counts */}
-                    <div className="grid grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">每章选择题数量</label>
-                            <input
-                                type="number"
-                                min="1"
-                                max="20"
-                                value={config.num_mc}
-                                onChange={(e) => setConfig({ ...config, num_mc: parseInt(e.target.value) || 0 })}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">每章填空题数量</label>
-                            <input
-                                type="number"
-                                min="1"
-                                max="20"
-                                value={config.num_fb}
-                                onChange={(e) => setConfig({ ...config, num_fb: parseInt(e.target.value) || 0 })}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Chapter Selection */}
-                    <div>
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold text-gray-900">选择章节 ({selectedChapters.length}/{chapters.length})</h3>
+                {/* Chapter Selection */}
+                <div className="bg-white rounded-2xl shadow-sm p-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                            <BookOpen size={20} className="text-blue-600" />
+                            选择章节
+                        </h3>
+                        <div className="space-x-2">
                             <button
-                                onClick={() => setSelectedChapters(selectedChapters.length === chapters.length ? [] : chapters.map(c => c.id))}
+                                onClick={() => setSelectedChapterIds(chapters.map(c => c.id))}
                                 className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                             >
-                                {selectedChapters.length === chapters.length ? '取消全选' : '全选'}
+                                全选
                             </button>
-                        </div>
-                        <div className="border border-gray-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
-                            {chapters.map((chapter) => (
-                                <div
-                                    key={chapter.id}
-                                    onClick={() => handleToggleChapter(chapter.id)}
-                                    className={`flex items-center p-4 border-b border-gray-100 last:border-0 cursor-pointer transition-colors ${selectedChapters.includes(chapter.id) ? 'bg-blue-50' : 'hover:bg-gray-50'
-                                        }`}
-                                >
-                                    <div className={`w-5 h-5 rounded border flex items-center justify-center mr-4 ${selectedChapters.includes(chapter.id) ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300'
-                                        }`}>
-                                        {selectedChapters.includes(chapter.id) && <CheckCircle size={14} />}
-                                    </div>
-                                    <span className="text-gray-700 font-medium">{chapter.title}</span>
-                                </div>
-                            ))}
+                            <span className="text-gray-300">|</span>
+                            <button
+                                onClick={() => setSelectedChapterIds([])}
+                                className="text-sm text-gray-500 hover:text-gray-700"
+                            >
+                                清空
+                            </button>
                         </div>
                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex gap-4 pt-4">
-                        <button
-                            onClick={() => navigate('/')}
-                            className="flex-1 py-3 px-6 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
-                        >
-                            稍后再说
-                        </button>
-                        <button
-                            onClick={handleStartGeneration}
-                            disabled={submitting || selectedChapters.length === 0}
-                            className="flex-1 py-3 px-6 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                            {submitting ? (
-                                <>
-                                    <Loader2 size={20} className="animate-spin" />
-                                    提交中...
-                                </>
-                            ) : (
-                                <>
-                                    开始生成 <ArrowRight size={20} />
-                                </>
-                            )}
-                        </button>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        {chapters.map((chapter) => (
+                            <label
+                                key={chapter.id}
+                                className={`flex items-center p-3 rounded-xl border-2 cursor-pointer transition-all ${selectedChapterIds.includes(chapter.id)
+                                    ? "border-blue-500 bg-blue-50"
+                                    : "border-gray-100 hover:border-gray-200"
+                                    }`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300 mr-3"
+                                    checked={selectedChapterIds.includes(chapter.id)}
+                                    onChange={() => toggleChapter(chapter.id)}
+                                />
+                                <span className={`flex-1 font-medium ${selectedChapterIds.includes(chapter.id) ? "text-blue-900" : "text-gray-700"
+                                    }`}>
+                                    {chapter.title}
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+
+                    <div className="mt-4 text-sm text-gray-500 text-right">
+                        已选 {selectedChapterIds.length} / {chapters.length} 章
                     </div>
                 </div>
+
+                {/* Action Button */}
+                <button
+                    onClick={handleGenerate}
+                    disabled={selectedChapterIds.length === 0 || isGenerating}
+                    className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:-translate-y-1 ${selectedChapterIds.length === 0 || isGenerating
+                        ? "bg-gray-200 text-gray-400 cursor-not-allowed shadow-none"
+                        : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-blue-200 hover:shadow-blue-300"
+                        }`}
+                >
+                    <div className="flex items-center justify-center gap-2">
+                        {isGenerating ? (
+                            <>
+                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                正在提交...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles size={24} />
+                                开始生成题目
+                            </>
+                        )}
+                    </div>
+                </button>
             </div>
-        </div>
+        </main>
     );
-}
+};
+
+export default CourseConfigPage;

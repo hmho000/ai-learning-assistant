@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import QuizExamView from "../components/quiz/QuizExamView";
+import QuizReviewView from "../components/quiz/QuizReviewView";
 import { fetchCourses, fetchChapters, fetchChapterQuiz } from "../api";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, BookOpen, Eye, PenTool } from "lucide-react";
 
 const QuestionsPage = () => {
   const { courseId } = useParams();
@@ -18,13 +19,15 @@ const QuestionsPage = () => {
   const [quizData, setQuizData] = useState(null);
   const [quizLoading, setQuizLoading] = useState(false);
 
+  // 'review' (看题模式) or 'exam' (答题模式)
+  const [viewMode, setViewMode] = useState('review');
+
   // 1. Load Course & Chapters
   useEffect(() => {
     const loadData = async () => {
       if (!courseId) return;
       setLoading(true);
       try {
-        // Fetch all courses to find the current one (API optimization needed later)
         const courses = await fetchCourses();
         const currentCourse = courses.find(c => c.id === parseInt(courseId));
 
@@ -56,16 +59,13 @@ const QuestionsPage = () => {
 
       setQuizLoading(true);
       setQuizData(null);
+      // Reset to review mode when changing chapters
+      setViewMode('review');
+
       try {
         const quizzes = await fetchChapterQuiz(selectedChapterId);
-        // Merge all questions from all quizzes in this chapter
-        // For now, we just take the first quiz or merge them
         if (quizzes.length > 0) {
-          // Flatten questions if multiple quizzes exist for a chapter
-          // But usually 1 chapter -> 1 quiz in our current logic
-          // Let's just take the first one for simplicity or merge questions
           const allQuestions = quizzes.flatMap(q => q.questions || []);
-
           setQuizData({
             title: quizzes[0].title,
             questions: allQuestions
@@ -108,19 +108,39 @@ const QuestionsPage = () => {
             <p className="text-gray-500 text-sm mt-1">{course?.description}</p>
           </div>
 
-          <div className="w-full md:w-64">
-            <label className="block text-xs font-medium text-gray-500 mb-1 uppercase">当前章节</label>
-            <select
-              value={selectedChapterId || ""}
-              onChange={handleChapterChange}
-              className="w-full rounded-lg border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              {chapters.map(ch => (
-                <option key={ch.id} value={ch.id}>
-                  {ch.title}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-col gap-3 w-full md:w-auto">
+            <div className="w-full md:w-64">
+              <label className="block text-xs font-medium text-gray-500 mb-1 uppercase">当前章节</label>
+              <select
+                value={selectedChapterId || ""}
+                onChange={handleChapterChange}
+                className="w-full rounded-lg border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {chapters.map(ch => (
+                  <option key={ch.id} value={ch.id}>
+                    {ch.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Mode Switcher (Optional, as we have button in view) */}
+            <div className="flex bg-gray-100 p-1 rounded-lg">
+              <button
+                onClick={() => setViewMode('review')}
+                className={`flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'review' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                <Eye size={14} /> 看题模式
+              </button>
+              <button
+                onClick={() => setViewMode('exam')}
+                className={`flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'exam' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                <PenTool size={14} /> 答题模式
+              </button>
+            </div>
           </div>
         </header>
 
@@ -129,11 +149,18 @@ const QuestionsPage = () => {
           {quizLoading ? (
             <div className="text-center py-20 text-gray-400">正在加载题目...</div>
           ) : quizData && quizData.questions && quizData.questions.length > 0 ? (
-            <QuizExamView
-              quiz={quizData}
-              chapterId={selectedChapterId}
-              courseId={course?.id}
-            />
+            viewMode === 'review' ? (
+              <QuizReviewView
+                quiz={quizData}
+                onStartExam={() => setViewMode('exam')}
+              />
+            ) : (
+              <QuizExamView
+                quiz={quizData}
+                chapterId={selectedChapterId}
+                courseId={course?.id}
+              />
+            )
           ) : (
             <div className="text-center py-20 text-gray-400">
               <p>本章节暂无题目</p>
