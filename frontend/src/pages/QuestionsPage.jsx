@@ -5,7 +5,7 @@ import { fetchCourses, fetchChapters, fetchChapterQuiz } from "../api";
 import { ArrowLeft } from "lucide-react";
 
 const QuestionsPage = () => {
-  const { id } = useParams(); // courseId
+  const { courseId } = useParams();
   const navigate = useNavigate();
 
   const [course, setCourse] = useState(null);
@@ -21,19 +21,19 @@ const QuestionsPage = () => {
   // 1. Load Course & Chapters
   useEffect(() => {
     const loadData = async () => {
-      if (!id) return;
+      if (!courseId) return;
       setLoading(true);
       try {
         // Fetch all courses to find the current one (API optimization needed later)
         const courses = await fetchCourses();
-        const currentCourse = courses.find(c => c.id === parseInt(id));
+        const currentCourse = courses.find(c => c.id === parseInt(courseId));
 
         if (!currentCourse) {
           throw new Error("Course not found");
         }
         setCourse(currentCourse);
 
-        const chs = await fetchChapters(parseInt(id));
+        const chs = await fetchChapters(parseInt(courseId));
         setChapters(chs);
 
         if (chs.length > 0) {
@@ -47,7 +47,7 @@ const QuestionsPage = () => {
       }
     };
     loadData();
-  }, [id]);
+  }, [courseId]);
 
   // 2. Load Quiz when chapter changes
   useEffect(() => {
