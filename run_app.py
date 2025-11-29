@@ -1,6 +1,8 @@
 """
-启动 FastAPI 后端（通过 uvicorn），并自动用默认浏览器打开前端页面。
-这个脚本将作为 PyInstaller 打包的入口。
+启动 AI Learning Assistant 全栈应用。
+架构：FastAPI (Backend) + SQLite (Database) + React (Frontend)
+功能：启动后端 API 服务，托管前端静态资源，并自动打开浏览器。
+此脚本也是 PyInstaller 打包的入口文件。
 """
 
 import threading

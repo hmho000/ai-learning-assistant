@@ -11,6 +11,11 @@ class Course(SQLModel, table=True):
     status: str = Field(default="processing")
     created_at: datetime = Field(default_factory=datetime.now)
     
+    # Generation Progress Tracking
+    generation_total_chapters: int = Field(default=0)
+    generation_current_chapter: int = Field(default=0)
+    generation_status_message: Optional[str] = Field(default=None)
+    
     chapters: List["Chapter"] = Relationship(back_populates="course", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 class Chapter(SQLModel, table=True):

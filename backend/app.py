@@ -246,9 +246,27 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
              statement = statement.where(Chapter.id.in_(config["chapter_ids"]))
         
         chapters = session.exec(statement).all()
-        print(f"[Task] Generating for {len(chapters)} chapters")
+        total_chapters = len(chapters)
+        print(f"[Task] Generating for {total_chapters} chapters")
+        
+        # Initialize progress
+        course = session.get(Course, course_id)
+        if course:
+            course.generation_total_chapters = total_chapters
+            course.generation_current_chapter = 0
+            course.generation_status_message = "准备开始生成..."
+            session.add(course)
+            session.commit()
 
-        for chapter in chapters:
+        for i, chapter in enumerate(chapters):
+             # Update progress start of chapter
+            course = session.get(Course, course_id)
+            if course:
+                course.generation_current_chapter = i
+                course.generation_status_message = f"正在生成第 {i+1}/{total_chapters} 章: {chapter.title}"
+                session.add(course)
+                session.commit()
+
              # 2. 生成题目
             print(f"[Task] Generating quiz for chapter: {chapter.title}")
             # Pass custom counts if supported by service (need to update service)
@@ -264,6 +282,14 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
             # 3. 保存题目
             save_quiz_to_db(session, chapter.id, quiz_data)
             print(f"[Task] Saved quiz for chapter: {chapter.title}")
+            
+        # Final update
+        course = session.get(Course, course_id)
+        if course:
+            course.generation_current_chapter = total_chapters
+            course.generation_status_message = "生成完成！"
+            session.add(course)
+            session.commit()
 
         # Update course status
         course = session.get(Course, course_id)
