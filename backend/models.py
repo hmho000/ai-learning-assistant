@@ -66,3 +66,9 @@ class QuizReadWithQuestions(SQLModel):
     title: str
     description: Optional[str] = None
     questions: List[QuestionRead] = []
+
+class ChapterRead(SQLModel):
+    id: int
+    title: str
+    index: int
+    has_quiz: bool = False

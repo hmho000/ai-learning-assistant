@@ -43,9 +43,8 @@ const FillInBlankQuestionExam = ({
       {showAnswer && (
         <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
           <p
-            className={`font-semibold ${
-              isCorrect ? "text-emerald-600" : "text-rose-600"
-            }`}
+            className={`font-semibold ${isCorrect ? "text-emerald-600" : "text-rose-600"
+              }`}
           >
             {isCorrect ? "回答正确！" : "回答错误。"}
           </p>
@@ -60,4 +59,3 @@ const FillInBlankQuestionExam = ({
 };
 
 export default FillInBlankQuestionExam;
-

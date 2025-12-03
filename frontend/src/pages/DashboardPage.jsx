@@ -1,29 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, Plus, ArrowRight, Loader2, CheckCircle2, Trash2, AlertCircle } from 'lucide-react';
 import { fetchCourses, deleteCourse } from '../api';
+import CourseProgressBar from '../components/CourseProgressBar';
 
 export default function DashboardPage() {
     const [courses, setCourses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const pollInterval = useRef(null);
 
-    const loadCourses = async () => {
+    const loadCourses = async (isPolling = false) => {
         try {
-            setLoading(true);
+            if (!isPolling) setLoading(true);
             const data = await fetchCourses();
             setCourses(data);
             setError(null);
+
+            // Check if any course needs polling
+            const hasActiveJobs = data.some(c =>
+                ['processing', 'parsing', 'generating'].includes(c.status)
+            );
+
+            if (hasActiveJobs) {
+                if (!pollInterval.current) {
+                    pollInterval.current = setInterval(() => loadCourses(true), 3000);
+                }
+            } else {
+                if (pollInterval.current) {
+                    clearInterval(pollInterval.current);
+                    pollInterval.current = null;
+                }
+            }
+
         } catch (err) {
             console.error(err);
-            setError("无法加载课程列表");
+            if (!isPolling) setError("无法加载课程列表");
         } finally {
-            setLoading(false);
+            if (!isPolling) setLoading(false);
         }
     };
 
     useEffect(() => {
         loadCourses();
+        return () => {
+            if (pollInterval.current) clearInterval(pollInterval.current);
+        };
     }, []);
 
     const handleDelete = async (e, courseId) => {
@@ -102,17 +124,13 @@ export default function DashboardPage() {
                                     <Trash2 size={16} />
                                 </button>
 
-                                {/* Status Badge */}
+                                {/* Status Badge (Only for error or ready, active jobs use Progress Bar) */}
                                 <div className="absolute top-4 left-4">
-                                    {course.status === 'processing' || course.status === 'parsing' || course.status === 'generating' ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-yellow-50 text-yellow-700 text-xs font-medium">
-                                            <Loader2 size={12} className="animate-spin" /> 处理中
-                                        </span>
-                                    ) : course.status === 'error' ? (
+                                    {course.status === 'error' ? (
                                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 text-xs font-medium">
                                             <AlertCircle size={12} /> 错误
                                         </span>
-                                    ) : (
+                                    ) : course.status === 'ready' && (
                                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium">
                                             <CheckCircle2 size={12} /> 已就绪
                                         </span>
@@ -133,16 +151,21 @@ export default function DashboardPage() {
                                     {course.description || "暂无描述"}
                                 </p>
 
-                                <div className={`flex items-center text-sm font-medium ${course.status === 'ready' ? 'text-blue-600' : 'text-gray-400'
-                                    }`}>
-                                    {course.status === 'ready' ? (
-                                        <>进入学习 <ArrowRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform" /></>
-                                    ) : course.status === 'error' ? (
-                                        <span className="text-red-500">生成失败</span>
-                                    ) : (
-                                        <>AI 生成中...</>
-                                    )}
-                                </div>
+                                {/* Progress Bar or Action Link */}
+                                {['processing', 'parsing', 'generating'].includes(course.status) ? (
+                                    <CourseProgressBar course={course} />
+                                ) : (
+                                    <div className={`flex items-center text-sm font-medium ${course.status === 'ready' ? 'text-blue-600' : 'text-gray-400'
+                                        }`}>
+                                        {course.status === 'ready' ? (
+                                            <>进入学习 <ArrowRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform" /></>
+                                        ) : course.status === 'error' ? (
+                                            <span className="text-red-500">生成失败</span>
+                                        ) : (
+                                            <>等待处理...</>
+                                        )}
+                                    </div>
+                                )}
                             </Link>
                         ))}
                     </div>

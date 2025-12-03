@@ -57,6 +57,8 @@ const CourseConfigPage = () => {
                 num_fb: numFb
             });
             // GenerationProgress component will handle the rest
+            // Non-blocking: Navigate to dashboard immediately
+            navigate('/');
         } catch (err) {
             console.error(err);
             alert("启动生成任务失败");
@@ -68,12 +70,7 @@ const CourseConfigPage = () => {
 
     return (
         <main className="min-h-screen bg-gray-50 py-8 px-4">
-            {isGenerating && (
-                <GenerationProgress
-                    courseId={courseId}
-                    onComplete={() => navigate(`/course/${courseId}`)}
-                />
-            )}
+            {/* Blocking Progress Removed */}
 
             <div className="max-w-3xl mx-auto space-y-6">
                 {/* Header */}

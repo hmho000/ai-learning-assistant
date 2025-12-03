@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import QuizExamView from "../components/quiz/QuizExamView";
 import QuizReviewView from "../components/quiz/QuizReviewView";
 import { fetchCourses, fetchChapters, fetchChapterQuiz } from "../api";
-import { ArrowLeft, BookOpen, Eye, PenTool } from "lucide-react";
+import { ArrowLeft, BookOpen, Eye, PenTool, ChevronDown } from "lucide-react";
 
 const QuestionsPage = () => {
   const { courseId } = useParams();
@@ -18,6 +18,23 @@ const QuestionsPage = () => {
 
   const [quizData, setQuizData] = useState(null);
   const [quizLoading, setQuizLoading] = useState(false);
+
+  // Custom Dropdown State
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   // 'review' (看题模式) or 'exam' (答题模式)
   const [viewMode, setViewMode] = useState('review');
@@ -109,36 +126,90 @@ const QuestionsPage = () => {
           </div>
 
           <div className="flex flex-col gap-3 w-full md:w-auto">
-            <div className="w-full md:w-64">
+            <div className="w-full md:w-64 relative" ref={dropdownRef}>
               <label className="block text-xs font-medium text-gray-500 mb-1 uppercase">当前章节</label>
-              <select
-                value={selectedChapterId || ""}
-                onChange={handleChapterChange}
-                className="w-full rounded-lg border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+
+              <button
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="w-full flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-left focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 ease-in-out hover:border-blue-300 hover:shadow-sm"
               >
-                {chapters.map(ch => (
-                  <option key={ch.id} value={ch.id}>
-                    {ch.title}
-                  </option>
-                ))}
-              </select>
+                <span className="truncate block mr-2">
+                  {chapters.find(ch => ch.id === selectedChapterId)?.title || "选择章节"}
+                  {chapters.find(ch => ch.id === selectedChapterId)?.has_quiz ? " (已生成)" : ""}
+                </span>
+                <ChevronDown
+                  size={16}
+                  className={`text-gray-400 transition-transform duration-300 ${isDropdownOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+
+              {/* Custom Dropdown Menu */}
+              <div
+                className={`absolute top-full left-0 w-full mt-1 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50 transition-all duration-200 origin-top ${isDropdownOpen
+                  ? 'opacity-100 scale-100 translate-y-0 visible'
+                  : 'opacity-0 scale-95 -translate-y-2 invisible'
+                  }`}
+              >
+                <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
+                  {chapters.map(ch => (
+                    <button
+                      key={ch.id}
+                      onClick={() => {
+                        handleChapterChange({ target: { value: ch.id } });
+                        setIsDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2.5 text-sm transition-colors duration-150 flex items-center justify-between group ${selectedChapterId === ch.id
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                    >
+                      <span className="truncate">{ch.title}</span>
+                      {ch.has_quiz && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${selectedChapterId === ch.id
+                          ? 'bg-blue-100 text-blue-600'
+                          : 'bg-gray-100 text-gray-500 group-hover:bg-gray-200'
+                          }`}>
+                          已生成
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {/* Mode Switcher (Optional, as we have button in view) */}
-            <div className="flex bg-gray-100 p-1 rounded-lg">
+            <div className="flex gap-2">
+              {/* Mode Switcher with Sliding Animation */}
+              <div className="relative flex bg-gray-100 p-1 rounded-lg flex-1 isolate">
+                {/* Sliding Pill */}
+                <div
+                  className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-md bg-white shadow-sm transition-all duration-300 ease-in-out z-[-1] ${viewMode === 'review' ? 'left-1' : 'left-[calc(50%)]'
+                    }`}
+                />
+
+                <button
+                  onClick={() => setViewMode('review')}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-300 whitespace-nowrap z-10 ${viewMode === 'review' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  <Eye size={14} /> 看题
+                </button>
+                <button
+                  onClick={() => setViewMode('exam')}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-300 whitespace-nowrap z-10 ${viewMode === 'exam' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  <PenTool size={14} /> 答题
+                </button>
+              </div>
+
+              {/* Generate Button */}
               <button
-                onClick={() => setViewMode('review')}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'review' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
+                onClick={() => navigate(`/course/${courseId}/config`)}
+                className="flex items-center justify-center gap-2 px-4 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-all duration-300 shadow-sm hover:shadow-md whitespace-nowrap"
+                title="生成更多题目"
               >
-                <Eye size={14} /> 看题模式
-              </button>
-              <button
-                onClick={() => setViewMode('exam')}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'exam' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-              >
-                <PenTool size={14} /> 答题模式
+                <BookOpen size={14} /> 生成题目
               </button>
             </div>
           </div>

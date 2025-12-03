@@ -106,9 +106,8 @@ const MultipleChoiceQuestionExam = ({
       {showAnswer && (
         <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
           <p
-            className={`font-semibold ${
-              isSelectedCorrect ? "text-emerald-600" : "text-rose-600"
-            }`}
+            className={`font-semibold ${isSelectedCorrect ? "text-emerald-600" : "text-rose-600"
+              }`}
           >
             {isSelectedCorrect ? "回答正确！" : "回答错误。"}
           </p>
@@ -126,4 +125,3 @@ const MultipleChoiceQuestionExam = ({
 };
 
 export default MultipleChoiceQuestionExam;
-

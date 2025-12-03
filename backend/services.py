@@ -78,11 +78,14 @@ def generate_quiz_for_chapter(chapter_text: str, chapter_title: str, num_mc: int
     调用 DeepSeek 生成题目
     """
     # 优先从环境变量获取，如果没有则报错
+    # Ensure env is loaded
+    from dotenv import load_dotenv
+    load_dotenv()
+    
     api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
         print("Error: DEEPSEEK_API_KEY not found in environment variables.")
-        # Return empty structure to avoid crashing
-        return {"multiple_choice": [], "fill_in_blank": []}
+        return None
     
     prompt = f"""
 你是一名专业的教育测评专家。
@@ -126,6 +129,7 @@ JSON 结构示例：
     }
     
     try:
+        print(f"Sending request to DeepSeek API for chapter: {chapter_title}...")
         resp = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=60)
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"]
@@ -139,8 +143,9 @@ JSON 结构示例：
         return json.loads(content)
     except Exception as e:
         print(f"AI Generation Error: {e}")
-        # 返回空数据避免 crash
-        return {"multiple_choice": [], "fill_in_blank": []}
+        if isinstance(e, requests.exceptions.HTTPError):
+             print(f"Response content: {e.response.text}")
+        return None
 
 def save_quiz_to_db(session: Session, chapter_id: int, quiz_data: Dict[str, Any]):
     """

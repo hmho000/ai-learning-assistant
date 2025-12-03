@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 from .database import create_db_and_tables, get_session
-from .models import Course, Chapter, Quiz, Question, QuizReadWithQuestions
+from .models import Course, Chapter, Quiz, Question, QuizReadWithQuestions, ChapterRead
 from .services import parse_chapters_from_pdf, generate_quiz_for_chapter, save_quiz_to_db
 import shutil
 from pathlib import Path
@@ -166,9 +166,12 @@ def process_course_generation(course_id: int, filename: str, session: Session):
             print(f"[Task] Generating quiz for chapter: {chapter.title}")
             quiz_data = generate_quiz_for_chapter(chapter.content_text, chapter.title)
             
-            # 3. 保存题目
-            save_quiz_to_db(session, chapter.id, quiz_data)
-            print(f"[Task] Saved quiz for chapter: {chapter.title}")
+            if quiz_data:
+                # 3. 保存题目
+                save_quiz_to_db(session, chapter.id, quiz_data)
+                print(f"[Task] Saved quiz for chapter: {chapter.title}")
+            else:
+                print(f"[Task] Failed to generate quiz for chapter: {chapter.title}")
             
         # Update course status
         course = session.get(Course, course_id)
@@ -269,9 +272,6 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
 
              # 2. 生成题目
             print(f"[Task] Generating quiz for chapter: {chapter.title}")
-            # Pass custom counts if supported by service (need to update service)
-            # For now, we use default or update service.
-            # Let's assume we update service to accept counts.
             quiz_data = generate_quiz_for_chapter(
                 chapter.content_text, 
                 chapter.title,
@@ -279,9 +279,18 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
                 num_fb=config.get("num_fb", 5)
             )
             
-            # 3. 保存题目
-            save_quiz_to_db(session, chapter.id, quiz_data)
-            print(f"[Task] Saved quiz for chapter: {chapter.title}")
+            if quiz_data:
+                # 3. 保存题目
+                save_quiz_to_db(session, chapter.id, quiz_data)
+                print(f"[Task] Saved quiz for chapter: {chapter.title}")
+            else:
+                print(f"[Task] Failed to generate quiz for chapter: {chapter.title} (Empty response)")
+                # Update status message to reflect error
+                course = session.get(Course, course_id)
+                if course:
+                    course.generation_status_message = f"生成失败: {chapter.title}"
+                    session.add(course)
+                    session.commit()
             
         # Final update
         course = session.get(Course, course_id)
@@ -376,10 +385,23 @@ async def generate_course_endpoint(course_id: int, config: dict, background_task
     background_tasks.add_task(run_custom_generation_task, course_id, config)
     return {"status": "accepted", "message": "Generation task started"}
 
-@app.get("/api/courses/{course_id}/chapters", response_model=list[Chapter])
+@app.get("/api/courses/{course_id}/chapters", response_model=list[ChapterRead])
 async def get_course_chapters(course_id: int, session: Session = Depends(get_session)):
-    chapters = session.exec(select(Chapter).where(Chapter.course_id == course_id)).all()
-    return chapters
+    # Use selectinload to efficiently fetch quizzes
+    from sqlalchemy.orm import selectinload
+    statement = select(Chapter).where(Chapter.course_id == course_id).options(selectinload(Chapter.quizzes))
+    chapters = session.exec(statement).all()
+    
+    result = []
+    for ch in chapters:
+        has_quiz = len(ch.quizzes) > 0
+        result.append(ChapterRead(
+            id=ch.id,
+            title=ch.title,
+            index=ch.index,
+            has_quiz=has_quiz
+        ))
+    return result
 
 @app.get("/api/chapters/{chapter_id}/quiz", response_model=list[QuizReadWithQuestions])
 async def get_chapter_quiz(chapter_id: int, session: Session = Depends(get_session)):
