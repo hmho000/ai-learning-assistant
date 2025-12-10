@@ -79,8 +79,10 @@ AI Learning Assistant 是一个面向大学生设计的智能学习辅助项目�
 ai-learning-assistant/
 │
 ├── run_app.py              # [入口] 启动脚本 (启动 FastAPI + 托管前端 + 打开浏览器)
+├── build_exe.bat           # Windows 打包脚本
 ├── ai_learning.db          # SQLite 数据库文件
 ├── .env                    # 环境变量配置 (API Key)
+├── requirements.txt        # Python 依赖列表
 │
 ├── backend/                # 后端源码
 │   ├── app.py              # FastAPI 应用入口 & API 路由
@@ -93,15 +95,19 @@ ai-learning-assistant/
 │   ├── src/
 │   │   ├── pages/
 │   │   │   ├── UploadPage.jsx       # 首页/上传页
-│   │   │   ├── CourseConfigPage.jsx # [NEW] 生成配置页
-│   │   │   └── QuestionsPage.jsx    # 答题/看题页
+│   │   │   ├── CourseConfigPage.jsx # 生成配置页
+│   │   │   ├── QuestionsPage.jsx    # 答题/看题页
+│   │   │   └── DashboardPage.jsx    # 仪表盘页
 │   │   ├── components/
-│   │   │   ├── quiz/                # 答题组件 (QuizReviewView, QuizExamView)
-│   │   │   └── GenerationProgress.jsx # 生成进度条
+│   │   │   ├── quiz/                # 答题组件 (QuizReviewView, QuizExamView 等)
+│   │   │   ├── GenerationProgress.jsx # 生成进度条
+│   │   │   └── CourseProgressBar.jsx  # 课程进度条
 │   │   └── api.ts                   # 前端 API 封装
 │   └── package.json
 │
-└── data/                   # [自动生成] 存放上传的 PDF 文件
+├── data/                   # [自动生成] 存放上传的 PDF 文件
+├── docs/                   # 项目文档
+└── scripts/                # 辅助脚本
 ```
 
 ---

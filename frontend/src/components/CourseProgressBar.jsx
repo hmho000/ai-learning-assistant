@@ -58,7 +58,7 @@ const CourseProgressBar = ({ course }) => {
             </div>
             <div className="w-full bg-blue-100 rounded-full h-2 overflow-hidden">
                 <div
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out relative"
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out relative overflow-hidden"
                     style={{ width: `${visualProgress}%` }}
                 >
                     <div className="absolute inset-0 bg-white/30 animate-[shimmer_2s_infinite]"></div>
