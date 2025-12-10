@@ -2,8 +2,53 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import QuizExamView from "../components/quiz/QuizExamView";
 import QuizReviewView from "../components/quiz/QuizReviewView";
-import { fetchCourses, fetchChapters, fetchChapterQuiz } from "../api";
-import { ArrowLeft, BookOpen, Eye, PenTool, ChevronDown } from "lucide-react";
+import { fetchCourses, fetchChapters, fetchChapterQuiz, exportChapterQuiz } from "../api";
+import { ArrowLeft, BookOpen, Eye, PenTool, ChevronDown, Download, X, FileText, CheckSquare } from "lucide-react";
+
+const ExportModal = ({ isOpen, onClose, onExport }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 transform transition-all scale-100">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-bold text-gray-900">导出题库</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <button
+            onClick={() => onExport(false)}
+            className="w-full flex items-center p-4 rounded-xl border-2 border-gray-100 hover:border-blue-500 hover:bg-blue-50 transition-all group text-left"
+          >
+            <div className="bg-blue-100 p-3 rounded-lg text-blue-600 mr-4 group-hover:bg-blue-200 transition-colors">
+              <FileText size={24} />
+            </div>
+            <div>
+              <div className="font-semibold text-gray-900">学生版（无答案）</div>
+              <div className="text-sm text-gray-500">仅包含题目，适合打印分发给学生练习</div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onExport(true)}
+            className="w-full flex items-center p-4 rounded-xl border-2 border-gray-100 hover:border-green-500 hover:bg-green-50 transition-all group text-left"
+          >
+            <div className="bg-green-100 p-3 rounded-lg text-green-600 mr-4 group-hover:bg-green-200 transition-colors">
+              <CheckSquare size={24} />
+            </div>
+            <div>
+              <div className="font-semibold text-gray-900">教师版（含答案解析）</div>
+              <div className="text-sm text-gray-500">包含题目、完整答案及详细解析</div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const QuestionsPage = () => {
   const { courseId } = useParams();
@@ -22,6 +67,9 @@ const QuestionsPage = () => {
   // Custom Dropdown State
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  // Export Modal State
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Click outside to close dropdown
   useEffect(() => {
@@ -104,11 +152,60 @@ const QuestionsPage = () => {
     setSelectedChapterId(parseInt(e.target.value));
   };
 
+  const handleExport = async (includeAnswers) => {
+    if (!selectedChapterId) return;
+    try {
+      const response = await exportChapterQuiz(selectedChapterId, includeAnswers);
+
+      // Create blob link to download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Try to get filename from headers or default
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = `chapter_${selectedChapterId}_quiz.docx`;
+
+      if (contentDisposition) {
+        // 优先尝试解析 filename*=UTF-8''... (用于非 ASCII 字符，如中文)
+        const filenameStarMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+        if (filenameStarMatch && filenameStarMatch.length === 2) {
+          filename = decodeURIComponent(filenameStarMatch[1]);
+        } else {
+          // 降级尝试解析 filename="..."
+          const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+          if (filenameMatch && filenameMatch.length === 2) {
+            filename = decodeURIComponent(filenameMatch[1]);
+          }
+        }
+      }
+
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+
+      // Cleanup
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setShowExportModal(false);
+    } catch (err) {
+      console.error("Export failed:", err);
+      alert("导出失败，请重试");
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-gray-500">加载中...</div>;
   if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
 
   return (
     <main className="min-h-screen bg-gray-50 py-8 px-4">
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onExport={handleExport}
+      />
+
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <header className="bg-white rounded-2xl shadow-sm p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -202,6 +299,17 @@ const QuestionsPage = () => {
                   <PenTool size={14} /> 答题
                 </button>
               </div>
+
+              {/* Export Button */}
+              {quizData && (
+                <button
+                  onClick={() => setShowExportModal(true)}
+                  className="flex items-center justify-center gap-2 px-4 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-300 shadow-sm whitespace-nowrap"
+                  title="导出为 Word"
+                >
+                  <Download size={14} /> 导出
+                </button>
+              )}
 
               {/* Generate Button */}
               <button

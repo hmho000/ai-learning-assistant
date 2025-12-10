@@ -408,6 +408,74 @@ async def get_chapter_quiz(chapter_id: int, session: Session = Depends(get_sessi
     quizzes = session.exec(select(Quiz).where(Quiz.chapter_id == chapter_id)).all()
     return quizzes
 
+@app.get("/api/chapters/{chapter_id}/export-word")
+async def export_chapter_quiz_word(chapter_id: int, include_answers: bool = True, session: Session = Depends(get_session)):
+    """
+    导出章节题目为 Word 文档
+    """
+    # 1. 获取题目数据
+    # 这里我们复用获取题目的逻辑，或者直接查库
+    # 为了方便，我们先查 Quiz，再查 Questions
+    # 注意：一个章节可能有多个 Quiz，这里我们默认导出第一个，或者合并所有
+    # 简单起见，导出该章节下的所有 Quiz
+    
+    quizzes = session.exec(select(Quiz).where(Quiz.chapter_id == chapter_id)).all()
+    if not quizzes:
+        raise HTTPException(status_code=404, detail="No quizzes found for this chapter")
+    
+    # 构造导出数据
+    # 如果有多个 quiz，我们合并它们
+    chapter = session.get(Chapter, chapter_id)
+    chapter_title = chapter.title if chapter else f"Chapter {chapter_id}"
+    
+    all_questions = []
+    for quiz in quizzes:
+        # 加载 questions
+        # 注意：这里需要确保 questions 已经被加载
+        # 如果是 lazy load，可能需要显式查询
+        questions = session.exec(select(Question).where(Question.quiz_id == quiz.id)).all()
+        for q in questions:
+            all_questions.append({
+                "type": q.type,
+                "stem": q.stem,
+                "options_json": q.options_json,
+                "answer": q.answer,
+                "explanation": q.explanation
+            })
+            
+    export_data = {
+        "title": f"{chapter_title} - 练习题",
+        "description": f"共 {len(all_questions)} 道题",
+        "questions": all_questions
+    }
+    
+    # 2. 生成 Word 文件
+    from .services import export_quiz_to_word
+    import tempfile
+    
+    # 创建临时文件
+    temp_dir = tempfile.gettempdir()
+    
+    # 优化文件名：章节名_教师版/学生版.docx
+    suffix = "教师版" if include_answers else "学生版"
+    # 清理文件名中的非法字符
+    safe_title = "".join([c for c in chapter_title if c.isalnum() or c in (' ', '-', '_', '.')]).strip()
+    filename = f"{safe_title}_{suffix}.docx"
+    
+    file_path = os.path.join(temp_dir, filename)
+    
+    success = export_quiz_to_word(export_data, file_path, include_answers=include_answers)
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to generate Word document")
+        
+    # 3. 返回文件
+    return FileResponse(
+        path=file_path, 
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
 @app.get("/api/debug/manifest")
 async def debug_manifest():
     """调试接口：返回 manifest.json 的内容"""

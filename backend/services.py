@@ -185,3 +185,113 @@ def save_quiz_to_db(session: Session, chapter_id: int, quiz_data: Dict[str, Any]
         
     session.commit()
     return quiz
+
+def export_quiz_to_word(quiz_data: Dict[str, Any], output_path: str, include_answers: bool = True):
+    """
+    将题目数据导出为 Word 文档
+    """
+    try:
+        from docx import Document
+        from docx.shared import Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.ns import qn
+    except ImportError:
+        print("Error: python-docx not installed.")
+        return False
+
+    doc = Document()
+    
+    # 设置全文档默认字体为宋体
+    style = doc.styles['Normal']
+    style.font.name = 'Times New Roman' # 西文
+    style.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体') # 中文
+    
+    # 标题
+    title = quiz_data.get("title", "练习题")
+    heading = doc.add_heading(title, 0)
+    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # 标题也设置一下字体，虽然 Heading 样式可能不同，但为了保险
+    for run in heading.runs:
+        run.font.name = 'Times New Roman'
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+    
+    # 描述
+    if quiz_data.get("description"):
+        p = doc.add_paragraph(quiz_data["description"])
+    
+    doc.add_paragraph("-" * 50)
+
+    questions = quiz_data.get("questions", [])
+    
+    # 分类题目
+    mc_questions = [q for q in questions if q["type"] == "multiple_choice"]
+    fb_questions = [q for q in questions if q["type"] == "fill_in_blank"]
+    
+    # 1. 单选题
+    if mc_questions:
+        doc.add_heading("一、单选题", level=1)
+        for i, q in enumerate(mc_questions, 1):
+            # 题干
+            p = doc.add_paragraph()
+            run = p.add_run(f"{i}. {q['stem']}")
+            run.font.size = Pt(12)
+            
+            # 选项
+            if q.get("options_json"):
+                try:
+                    options = json.loads(q["options_json"])
+                    for opt in options:
+                        doc.add_paragraph(f"   {opt}")
+                except:
+                    pass
+            
+            # 答案和解析
+            if include_answers:
+                ans_p = doc.add_paragraph()
+                ans_run = ans_p.add_run(f"【答案】 {q.get('answer')}")
+                ans_run.font.bold = True
+                ans_run.font.color.rgb = RGBColor(0, 100, 0)  # Dark Green
+                
+                if q.get("explanation"):
+                    exp_p = doc.add_paragraph()
+                    exp_run = exp_p.add_run(f"【解析】 {q['explanation']}")
+                    exp_run.font.italic = True
+                    exp_run.font.color.rgb = RGBColor(100, 100, 100) # Gray
+            
+            doc.add_paragraph() # Spacer
+
+    # 2. 填空题
+    if fb_questions:
+        doc.add_heading("二、填空题", level=1)
+        for i, q in enumerate(fb_questions, 1):
+            # 题干
+            p = doc.add_paragraph()
+            run = p.add_run(f"{i}. {q['stem']}")
+            run.font.size = Pt(12)
+            
+            # 这里的填空题通常是在题干里挖空，或者直接问
+            # 如果是挖空，通常不需要额外展示什么，用户直接在横线上写
+            # 但为了 Word 导出好看，可以加个下划线占位如果题干里没有的话
+            # 这里简单处理，直接展示题干
+            
+            # 答案和解析
+            if include_answers:
+                ans_p = doc.add_paragraph()
+                ans_run = ans_p.add_run(f"【答案】 {q.get('answer')}")
+                ans_run.font.bold = True
+                ans_run.font.color.rgb = RGBColor(0, 100, 0)
+                
+                if q.get("explanation"):
+                    exp_p = doc.add_paragraph()
+                    exp_run = exp_p.add_run(f"【解析】 {q['explanation']}")
+                    exp_run.font.italic = True
+                    exp_run.font.color.rgb = RGBColor(100, 100, 100)
+            
+            doc.add_paragraph() # Spacer
+            
+    try:
+        doc.save(output_path)
+        return True
+    except Exception as e:
+        print(f"Error saving word document: {e}")
+        return False

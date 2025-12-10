@@ -79,3 +79,11 @@ export const deleteCourse = async (courseId: number) => {
   const res = await api.delete<{ status: string; message: string }>(`/courses/${courseId}`);
   return res.data;
 };
+
+export const exportChapterQuiz = async (chapterId: number, includeAnswers: boolean) => {
+  const res = await api.get(`/chapters/${chapterId}/export-word`, {
+    params: { include_answers: includeAnswers },
+    responseType: 'blob',
+  });
+  return res; // Return full response to access headers if needed, or just data
+};

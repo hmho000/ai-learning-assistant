@@ -6,5 +6,6 @@ sqlmodel
 python-multipart
 pymupdf
 requests
+python-docx
 
 
