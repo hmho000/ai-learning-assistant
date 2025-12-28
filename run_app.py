@@ -10,6 +10,8 @@ import time
 import webbrowser
 import sys
 import os
+import subprocess
+import shutil
 
 try:
     import uvicorn
@@ -45,6 +47,74 @@ def load_env():
                 except ValueError:
                     pass
 
+def check_and_build_frontend(root_dir: str):
+    """
+    检查前端构建是否存在，如果不存在则尝试自动构建。
+    """
+    frontend_dir = os.path.join(root_dir, "frontend")
+    dist_dir = os.path.join(frontend_dir, "dist")
+    
+    if os.path.exists(dist_dir) and os.path.isdir(dist_dir):
+        # print("[INFO] 前端构建目录已存在，跳过构建。")
+        return
+
+    print(f"[WARN] 未找到前端构建目录: {dist_dir}")
+    print("[INFO] 尝试自动构建前端...")
+    
+    # 检查 npm 是否可用
+    if shutil.which("npm") is None:
+        print("[ERROR] 未找到 npm 命令，无法自动构建前端。")
+        print("请手动安装 Node.js 和 npm，并在 frontend/ 目录下运行 `npm run build`。")
+        return
+
+    try:
+        # 1. npm install
+        print("[INFO] 正在运行 npm install...")
+        subprocess.run(["npm", "install"], cwd=frontend_dir, check=True, shell=True)
+        
+        # 2. npm run build
+        print("[INFO] 正在运行 npm run build...")
+        subprocess.run(["npm", "run", "build"], cwd=frontend_dir, check=True, shell=True)
+        
+        print("[INFO] 前端构建成功！")
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] 前端构建失败: {e}")
+        print("[INFO] 尝试执行清理并重新安装依赖...")
+        
+        # 尝试清理 node_modules 和 package-lock.json
+        node_modules_path = os.path.join(frontend_dir, "node_modules")
+        package_lock_path = os.path.join(frontend_dir, "package-lock.json")
+        
+        try:
+            if os.path.exists(node_modules_path):
+                print(f"[INFO] 删除 {node_modules_path} ...")
+                # Windows 下有时候会因为权限问题删除失败，尝试使用 shell 命令
+                if os.name == 'nt':
+                    subprocess.run(["rmdir", "/s", "/q", "node_modules"], cwd=frontend_dir, shell=True)
+                else:
+                    shutil.rmtree(node_modules_path)
+            
+            if os.path.exists(package_lock_path):
+                print(f"[INFO] 删除 {package_lock_path} ...")
+                try:
+                    os.remove(package_lock_path)
+                except OSError:
+                     pass # Ignore if failed to remove lock file
+                
+            print("[INFO] 重新运行 npm install...")
+            subprocess.run(["npm", "install"], cwd=frontend_dir, check=True, shell=True)
+            
+            print("[INFO] 重新运行 npm run build...")
+            subprocess.run(["npm", "run", "build"], cwd=frontend_dir, check=True, shell=True)
+            
+            print("[INFO] 前端重新构建成功！")
+            
+        except Exception as retry_e:
+            print(f"[ERROR] 重新构建仍然失败: {retry_e}")
+            print("请尝试手动进入 frontend 目录执行清理和构建操作。")
+    except Exception as e:
+        print(f"[ERROR] 构建过程中发生意外错误: {e}")
+
 def main() -> None:
     """启动 uvicorn 服务并在浏览器中打开首页。"""
     # Load .env first
@@ -60,6 +130,9 @@ def main() -> None:
     
     # 确保工作目录正确（影响 backend 模块的导入）
     os.chdir(root)
+    
+    # 检查并自动构建前端
+    check_and_build_frontend(root)
     
     print("=" * 50)
     print("AI 学习助手 - 启动服务")
