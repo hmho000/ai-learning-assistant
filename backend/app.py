@@ -378,6 +378,12 @@ async def generate_course_endpoint(course_id: int, config: dict, background_task
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     
+    # Check for API Key
+    from dotenv import load_dotenv
+    load_dotenv()
+    if not os.getenv("DEEPSEEK_API_KEY"):
+        raise HTTPException(status_code=400, detail="Missing DEEPSEEK_API_KEY. Please configure it in .env file.")
+    
     course.status = "generating"
     session.add(course)
     session.commit()

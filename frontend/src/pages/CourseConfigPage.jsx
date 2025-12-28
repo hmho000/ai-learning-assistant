@@ -61,7 +61,11 @@ const CourseConfigPage = () => {
             navigate('/');
         } catch (err) {
             console.error(err);
-            alert("启动生成任务失败");
+            if (err.response && err.response.status === 400 && err.response.data.detail && err.response.data.detail.includes("Missing DEEPSEEK_API_KEY")) {
+                alert("请先配置 .env 文件中的 DEEPSEEK_API_KEY");
+            } else {
+                alert("启动生成任务失败");
+            }
             setIsGenerating(false);
         }
     };

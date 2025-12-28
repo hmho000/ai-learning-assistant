@@ -27,7 +27,6 @@ DEFAULT_OUTPUT_PATH = Path("experiments/output/chapter_questions.json")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEFAULT_MODEL = "deepseek-chat"
 # 出于安全考虑，这里不再硬编码真实 API Key，建议使用环境变量或命令行参数
-DEFAULT_API_KEY = "sk-3242989c595b4e0e9798190133d80bf5"  # 或者直接删掉，让下面的检查报错提醒配置
 
 # 题目数量下限（仅用于报警提示，不会自动补题）
 MIN_QUESTIONS_PER_TYPE = 8
