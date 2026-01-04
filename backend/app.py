@@ -315,6 +315,7 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
             course = session.get(Course, course_id)
             if course:
                 course.status = "error"
+                course.generation_status_message = f"生成出错: {str(e)}"
                 session.add(course)
                 session.commit()
         except Exception as db_e:
@@ -380,9 +381,10 @@ async def generate_course_endpoint(course_id: int, config: dict, background_task
     
     # Check for API Key
     from dotenv import load_dotenv
-    load_dotenv()
-    if not os.getenv("DEEPSEEK_API_KEY"):
-        raise HTTPException(status_code=400, detail="Missing DEEPSEEK_API_KEY. Please configure it in .env file.")
+    load_dotenv(override=True)
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key or api_key.strip() == "sk-your_api_key_here":
+        raise HTTPException(status_code=400, detail="未配置有效的 DEEPSEEK_API_KEY，请检查 .env 文件。")
     
     course.status = "generating"
     session.add(course)

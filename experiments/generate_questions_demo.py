@@ -329,10 +329,13 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    api_key = args.api_key or os.getenv("DEEPSEEK_API_KEY") or DEFAULT_API_KEY
-    if not api_key:
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+
+    api_key = args.api_key or os.getenv("DEEPSEEK_API_KEY")
+    if not api_key or api_key.strip() == "sk-your_api_key_here":
         raise RuntimeError(
-            "未提供 DeepSeek API Key，请通过 --api-key 或 DEEPSEEK_API_KEY 环境变量设置。"
+            "未提供有效的 DeepSeek API Key，请通过 --api-key 参数提供，或在 .env 文件中配置 DEEPSEEK_API_KEY。"
         )
 
     input_path = Path(args.input)

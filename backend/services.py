@@ -79,13 +79,14 @@ def generate_quiz_for_chapter(chapter_text: str, chapter_title: str, num_mc: int
     """
     # 优先从环境变量获取，如果没有则报错
     # Ensure env is loaded
+    # 优先从环境变量获取，如果没有则报错
+    # Ensure env is loaded
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(override=True)
     
     api_key = os.getenv("DEEPSEEK_API_KEY")
-    if not api_key:
-        print("Error: DEEPSEEK_API_KEY not found in environment variables.")
-        return None
+    if not api_key or api_key.strip() == "sk-your_api_key_here":
+        raise ValueError("未配置有效的 DEEPSEEK_API_KEY，请检查 .env 文件。")
     
     prompt = f"""
 你是一名专业的教育测评专家。
@@ -141,11 +142,15 @@ JSON 结构示例：
                 content = content[4:]
         
         return json.loads(content)
+    except requests.exceptions.Timeout:
+        raise RuntimeError("DeepSeek API 请求超时，请稍后重试。")
+    except requests.exceptions.RequestException as e:
+        error_msg = f"DeepSeek API 调用失败: {e}"
+        if e.response is not None:
+             error_msg += f" (Status: {e.response.status_code})"
+        raise RuntimeError(error_msg)
     except Exception as e:
-        print(f"AI Generation Error: {e}")
-        if isinstance(e, requests.exceptions.HTTPError):
-             print(f"Response content: {e.response.text}")
-        return None
+        raise RuntimeError(f"题目生成发生错误: {e}")
 
 def save_quiz_to_db(session: Session, chapter_id: int, quiz_data: Dict[str, Any]):
     """
