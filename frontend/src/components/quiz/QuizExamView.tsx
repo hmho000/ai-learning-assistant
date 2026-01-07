@@ -5,6 +5,7 @@ import FillInBlankQuestionExam from "./FillInBlankQuestionExam";
 import QuizExamSummary from "./QuizExamSummary";
 import { saveQuizResult } from "../../utils/quizStorage";
 import { calcScore } from "../../utils/quizUtils";
+import { mistakeApi } from "../../api";
 
 // Define local interfaces for the API data structure if not imported
 interface Question {
@@ -97,6 +98,21 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
       answers,
       detail: result.detail,
     });
+
+    // 将错题添加到错题本
+    if (courseId) {
+      const wrongQuestions = result.detail.filter((d) => !d.correct);
+      wrongQuestions.forEach((detail) => {
+        // 从 questionId 中提取题目 ID（格式：mc-123 或 fb-123）
+        const questionIdMatch = detail.questionId.match(/(mc|fb)-(\d+)/);
+        if (questionIdMatch) {
+          const questionId = parseInt(questionIdMatch[2]);
+          mistakeApi.addMistake(courseId, questionId).catch((error) => {
+            console.error("添加错题失败:", error);
+          });
+        }
+      });
+    }
   };
 
   return (

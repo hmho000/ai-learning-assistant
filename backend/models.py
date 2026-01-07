@@ -72,3 +72,12 @@ class ChapterRead(SQLModel):
     title: str
     index: int
     has_quiz: bool = False
+
+
+# 新增：错题记录表
+class MistakeRecord(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    question_id: int = Field(foreign_key="question.id") # 关联题目ID
+    course_id: int = Field(foreign_key="course.id")     # 关联课程ID 
+    created_at: datetime = Field(default_factory=datetime.utcnow) # 记录错题时间
+    
