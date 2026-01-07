@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, create_engine, Session
-from .models import * # Import models to register them with SQLModel
+from .models import * # 导入模型以将其注册到 SQLModel
 
 sqlite_file_name = "ai_learning.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"

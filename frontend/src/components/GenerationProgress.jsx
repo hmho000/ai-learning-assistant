@@ -49,9 +49,9 @@ const GenerationProgress = ({ courseId, onComplete }) => {
             }
         };
 
-        // Initial check
+        // 初始检查
         checkProgress();
-        // Poll every 1 second
+        // 每 1 秒轮询一次
         intervalId = setInterval(checkProgress, 1000);
 
         return () => clearInterval(intervalId);
@@ -62,7 +62,7 @@ const GenerationProgress = ({ courseId, onComplete }) => {
             <div className="w-full max-w-md p-8 bg-white rounded-2xl shadow-2xl transform transition-all scale-100">
                 <div className="text-center space-y-6">
 
-                    {/* Icon / Animation */}
+                    {/* 图标 / 动画 */}
                     <div className="relative flex items-center justify-center w-24 h-24 mx-auto">
                         {isComplete ? (
                             <div className="absolute inset-0 flex items-center justify-center bg-green-100 rounded-full animate-bounce-small">
@@ -80,7 +80,7 @@ const GenerationProgress = ({ courseId, onComplete }) => {
                         )}
                     </div>
 
-                    {/* Text Content */}
+                    {/* 文本内容 */}
                     <div className="space-y-2">
                         <h2 className="text-2xl font-bold text-gray-900">
                             {isComplete ? "生成完成" : "AI 正在生成课程"}
@@ -90,7 +90,7 @@ const GenerationProgress = ({ courseId, onComplete }) => {
                         </p>
                     </div>
 
-                    {/* Progress Bar */}
+                    {/* 进度条 */}
                     <div className="relative pt-4">
                         <div className="flex items-center justify-between mb-2 text-sm font-semibold text-gray-600">
                             <span>进度</span>
@@ -109,7 +109,7 @@ const GenerationProgress = ({ courseId, onComplete }) => {
                 </div>
             </div>
 
-            {/* CSS for custom animations if not in global css */}
+            {/* 自定义动画的 CSS（如果不在全局 CSS 中） */}
             <style>{`
         @keyframes shimmer {
           0% { transform: translateX(-100%); }

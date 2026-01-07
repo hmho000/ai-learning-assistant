@@ -229,7 +229,7 @@ def process_course_generation(course_id: int, filename: str, session: Session):
             else:
                 print(f"[Task] Failed to generate quiz for chapter: {chapter.title}")
             
-        # Update course status
+        # 更新课程状态
         course = session.get(Course, course_id)
         if course:
             course.status = "ready"
@@ -271,7 +271,7 @@ def process_course_parsing(course_id: int, filename: str, session: Session):
             )
             session.add(chapter)
         
-        # Update course status
+        # 更新课程状态
         course = session.get(Course, course_id)
         if course:
             course.status = "parsed"
@@ -299,7 +299,7 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
     try:
         print(f"[Task] Starting custom generation for course {course_id} with config {config}")
         
-        # Get chapters
+        # 获取章节
         statement = select(Chapter).where(Chapter.course_id == course_id)
         if config.get("chapter_ids"):
              statement = statement.where(Chapter.id.in_(config["chapter_ids"]))
@@ -308,7 +308,7 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
         total_chapters = len(chapters)
         print(f"[Task] Generating for {total_chapters} chapters")
         
-        # Initialize progress
+        # 初始化进度
         course = session.get(Course, course_id)
         if course:
             course.generation_total_chapters = total_chapters
@@ -318,7 +318,7 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
             session.commit()
 
         for i, chapter in enumerate(chapters):
-             # Update progress start of chapter
+             # 更新章节开始进度
             course = session.get(Course, course_id)
             if course:
                 course.generation_current_chapter = i
@@ -332,7 +332,12 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
                 chapter.content_text, 
                 chapter.title,
                 num_mc=config.get("num_mc", 5),
-                num_fb=config.get("num_fb", 5)
+                num_multi=config.get("num_multi", 0),
+                num_tf=config.get("num_tf", 0),
+                num_fb=config.get("num_fb", 5),
+                num_short=config.get("num_short", 0),
+                num_code=config.get("num_code", 0),
+                difficulty=config.get("difficulty", "medium")
             )
             
             if quiz_data:
@@ -341,14 +346,14 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
                 print(f"[Task] Saved quiz for chapter: {chapter.title}")
             else:
                 print(f"[Task] Failed to generate quiz for chapter: {chapter.title} (Empty response)")
-                # Update status message to reflect error
+                # 更新状态消息以反映错误
                 course = session.get(Course, course_id)
                 if course:
                     course.generation_status_message = f"生成失败: {chapter.title}"
                     session.add(course)
                     session.commit()
             
-        # Final update
+        # 最终更新
         course = session.get(Course, course_id)
         if course:
             course.generation_current_chapter = total_chapters
@@ -356,7 +361,7 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
             session.add(course)
             session.commit()
 
-        # Update course status
+        # 更新课程状态
         course = session.get(Course, course_id)
         if course:
             course.status = "ready"
@@ -384,10 +389,10 @@ async def delete_course(course_id: int, session: Session = Depends(get_session))
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     
-    # Delete associated files (optional, but good practice)
-    # Assuming we stored filename or can derive it. 
-    # Current model doesn't store filename explicitly other than title maybe.
-    # Let's skip file deletion for now to avoid deleting wrong files.
+    # 删除相关文件（可选，但建议这样做）
+    # 假设我们存储了文件名或可以推导出它。
+    # 当前模型除了标题外没有明确存储文件名。
+    # 暂时跳过文件删除，以免误删。
     
     session.delete(course)
     session.commit()
@@ -396,7 +401,7 @@ async def delete_course(course_id: int, session: Session = Depends(get_session))
 
 def run_generation_task(course_id: int, filename: str):
     """
-    Wrapper to create a new session for the background task
+    为后台任务创建新会话的包装器
     """
     from .database import engine
     with Session(engine) as session:
@@ -418,8 +423,8 @@ async def parse_course_endpoint(course_id: int, background_tasks: BackgroundTask
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     
-    # Assuming filename is stored or we use title as filename (legacy)
-    # Ideally we should store filename. For now using title + .pdf as per upload logic
+    # 假设文件名已存储或我们使用标题作为文件名（旧版逻辑）
+    # 理想情况下我们应该存储文件名。目前按照上传逻辑使用 标题 + .pdf
     filename = f"{course.title}.pdf"
     
     course.status = "parsing"
@@ -435,11 +440,14 @@ async def generate_course_endpoint(course_id: int, config: dict, background_task
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     
-    # Check for API Key
+    # 检查 API 密钥
     from dotenv import load_dotenv
-    load_dotenv(override=True)
+    env_path = Path(__file__).parent.parent / ".env"
+    load_dotenv(dotenv_path=env_path, override=True)
+    
     api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key or api_key.strip() == "sk-your_api_key_here":
+        print(f"[ERROR] Invalid API Key. Tried loading from: {env_path.resolve()}")
         raise HTTPException(status_code=400, detail="未配置有效的 DEEPSEEK_API_KEY，请检查 .env 文件。")
     
     course.status = "generating"
@@ -451,7 +459,7 @@ async def generate_course_endpoint(course_id: int, config: dict, background_task
 
 @app.get("/api/courses/{course_id}/chapters", response_model=list[ChapterRead])
 async def get_course_chapters(course_id: int, session: Session = Depends(get_session)):
-    # Use selectinload to efficiently fetch quizzes
+    # 使用 selectinload 高效获取测验
     from sqlalchemy.orm import selectinload
     statement = select(Chapter).where(Chapter.course_id == course_id).options(selectinload(Chapter.quizzes))
     chapters = session.exec(statement).all()
@@ -539,6 +547,37 @@ async def export_chapter_quiz_word(chapter_id: int, include_answers: bool = True
         filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
+
+from pydantic import BaseModel
+
+class GradeShortAnswerRequest(BaseModel):
+    question_id: int
+    answer: str
+
+class ReviewCodeRequest(BaseModel):
+    question_id: int
+    code: str
+
+@app.post("/api/grade/short-answer")
+def api_grade_short_answer(req: GradeShortAnswerRequest, session: Session = Depends(get_session)):
+    from .services import grade_short_answer
+    question = session.get(Question, req.question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    # 使用题干和参考答案进行评分
+    result = grade_short_answer(question.stem, question.answer, req.answer)
+    return result
+
+@app.post("/api/grade/code")
+def api_review_code(req: ReviewCodeRequest, session: Session = Depends(get_session)):
+    from .services import review_code
+    question = session.get(Question, req.question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    result = review_code(question.stem, question.answer, req.code)
+    return result
 
 @app.get("/api/debug/manifest")
 async def debug_manifest():

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // 在开发环境下，Vite 会代理 /api 到后端
-// 在生产环境下，前端和后端同源
+// 在生产环境下，前端 and 后端同源
 const api = axios.create({
   baseURL: '/api',
 });
@@ -60,7 +60,7 @@ export const parseCourse = async (courseId: number) => {
   return res.data;
 };
 
-export const generateCourseCustom = async (courseId: number, config: { chapter_ids: number[], num_mc: number, num_fb: number }) => {
+export const generateCourseCustom = async (courseId: number, config: any) => {
   const res = await api.post<{ status: string }>(`/courses/${courseId}/generate`, config);
   return res.data;
 };
@@ -85,7 +85,7 @@ export const exportChapterQuiz = async (chapterId: number, includeAnswers: boole
     params: { include_answers: includeAnswers },
     responseType: 'blob',
   });
-  return res; // Return full response to access headers if needed, or just data
+  return res; // 如果需要访问标头，则返回完整响应，否则只返回数据
 };
 
 
@@ -94,9 +94,9 @@ export const mistakeApi = {
   // 添加错题
   addMistake: async (courseId: number, questionId: number) => {
     // axios 会自动处理 JSON，所以直接传对象即可
-    const res = await api.post('/mistakes', { 
-      course_id: courseId, 
-      question_id: questionId 
+    const res = await api.post('/mistakes', {
+      course_id: courseId,
+      question_id: questionId
     });
     return res.data;
   },
@@ -113,4 +113,15 @@ export const mistakeApi = {
     const res = await api.delete(`/mistakes/${questionId}`);
     return res.data;
   }
+};
+
+// ==================== AI 判分 API ====================
+export const gradeShortAnswer = async (questionId: number, answer: string) => {
+  const res = await api.post<{ score: number; feedback: string }>(`/grade/short-answer`, { question_id: questionId, answer });
+  return res.data;
+};
+
+export const reviewCode = async (questionId: number, code: string) => {
+  const res = await api.post<{ score: number; feedback: string }>(`/grade/code`, { question_id: questionId, code });
+  return res.data;
 };

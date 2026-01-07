@@ -11,8 +11,15 @@ const CourseConfigPage = () => {
     const [course, setCourse] = useState(null);
     const [chapters, setChapters] = useState([]);
     const [selectedChapterIds, setSelectedChapterIds] = useState([]);
-    const [numMc, setNumMc] = useState(5);
-    const [numFb, setNumFb] = useState(5);
+
+    // 配置状态
+    const [difficulty, setDifficulty] = useState("medium");
+    const [numMc, setNumMc] = useState(5);      // 单选
+    const [numMulti, setNumMulti] = useState(0); // 多选
+    const [numTf, setNumTf] = useState(0);       // 判断
+    const [numFb, setNumFb] = useState(5);       // 填空
+    const [numShort, setNumShort] = useState(0); // 简答
+    const [numCode, setNumCode] = useState(0);   // 代码
 
     const [loading, setLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -27,8 +34,8 @@ const CourseConfigPage = () => {
 
                 const chs = await fetchChapters(parseInt(courseId));
                 setChapters(chs);
-                // Default select all
-                setSelectedChapterIds(chs.map(c => c.id));
+                // 默认不选（用户要求：默认反选/不选）
+                setSelectedChapterIds([]);
             } catch (err) {
                 console.error(err);
             } finally {
@@ -53,11 +60,16 @@ const CourseConfigPage = () => {
         try {
             await generateCourseCustom(parseInt(courseId), {
                 chapter_ids: selectedChapterIds,
+                difficulty: difficulty,
                 num_mc: numMc,
-                num_fb: numFb
+                num_multi: numMulti,
+                num_tf: numTf,
+                num_fb: numFb,
+                num_short: numShort,
+                num_code: numCode
             });
-            // GenerationProgress component will handle the rest
-            // Non-blocking: Navigate to dashboard immediately
+            // GenerationProgress 组件将处理其余部分
+            // 非阻塞：立即跳转到仪表盘
             navigate('/');
         } catch (err) {
             console.error(err);
@@ -74,10 +86,8 @@ const CourseConfigPage = () => {
 
     return (
         <main className="min-h-screen bg-gray-50 py-8 px-4">
-            {/* Blocking Progress Removed */}
-
             <div className="max-w-3xl mx-auto space-y-6">
-                {/* Header */}
+                {/* 头部 */}
                 <header className="bg-white rounded-2xl shadow-sm p-6">
                     <button
                         onClick={() => navigate('/')}
@@ -89,29 +99,75 @@ const CourseConfigPage = () => {
                     <p className="text-gray-500 mt-1">选择需要生成题目的章节及数量</p>
                 </header>
 
-                {/* Course Info */}
+                {/* 课程信息 */}
                 <div className="bg-white rounded-2xl shadow-sm p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-2">{course?.title}</h2>
                     <p className="text-sm text-gray-500">{course?.description}</p>
                 </div>
 
-                {/* Configuration */}
+                {/* 配置 */}
                 <div className="bg-white rounded-2xl shadow-sm p-6">
                     <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
                         <Sparkles size={20} className="text-blue-600" />
-                        题目数量配置 (每章)
+                        题目配置 (每章)
                     </h3>
+
+                    {/* 难度选择 */}
+                    <div className="mb-6">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            难度分级
+                        </label>
+                        <div className="flex gap-4">
+                            {['easy', 'medium', 'hard'].map((level) => (
+                                <label key={level} className={`flex-1 cursor-pointer border-2 rounded-xl p-3 text-center transition-all ${difficulty === level ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-100 hover:border-gray-200'
+                                    }`}>
+                                    <input
+                                        type="radio"
+                                        name="difficulty"
+                                        value={level}
+                                        checked={difficulty === level}
+                                        onChange={(e) => setDifficulty(e.target.value)}
+                                        className="hidden"
+                                    />
+                                    <span className="capitalize font-medium">
+                                        {level === 'easy' ? '简单' : level === 'medium' ? '中等' : '困难'}
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                选择题数量
+                                单选题数量
                             </label>
                             <input
-                                type="number"
-                                min="1"
-                                max="20"
+                                type="number" min="0" max="20"
                                 value={numMc}
                                 onChange={(e) => setNumMc(parseInt(e.target.value) || 0)}
+                                className="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                多选题数量
+                            </label>
+                            <input
+                                type="number" min="0" max="20"
+                                value={numMulti}
+                                onChange={(e) => setNumMulti(parseInt(e.target.value) || 0)}
+                                className="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                判断题数量
+                            </label>
+                            <input
+                                type="number" min="0" max="20"
+                                value={numTf}
+                                onChange={(e) => setNumTf(parseInt(e.target.value) || 0)}
                                 className="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                             />
                         </div>
@@ -120,18 +176,38 @@ const CourseConfigPage = () => {
                                 填空题数量
                             </label>
                             <input
-                                type="number"
-                                min="1"
-                                max="20"
+                                type="number" min="0" max="20"
                                 value={numFb}
                                 onChange={(e) => setNumFb(parseInt(e.target.value) || 0)}
+                                className="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                简答题数量
+                            </label>
+                            <input
+                                type="number" min="0" max="10"
+                                value={numShort}
+                                onChange={(e) => setNumShort(parseInt(e.target.value) || 0)}
+                                className="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                代码题数量
+                            </label>
+                            <input
+                                type="number" min="0" max="5"
+                                value={numCode}
+                                onChange={(e) => setNumCode(parseInt(e.target.value) || 0)}
                                 className="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                             />
                         </div>
                     </div>
                 </div>
 
-                {/* Chapter Selection */}
+                {/* 章节选择 */}
                 <div className="bg-white rounded-2xl shadow-sm p-6">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-semibold text-gray-900 flex items-center gap-2">
@@ -183,7 +259,7 @@ const CourseConfigPage = () => {
                     </div>
                 </div>
 
-                {/* Action Button */}
+                {/* 操作按钮 */}
                 <button
                     onClick={handleGenerate}
                     disabled={selectedChapterIds.length === 0 || isGenerating}

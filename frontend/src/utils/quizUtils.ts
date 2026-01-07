@@ -77,66 +77,104 @@ export function formatAnswerDisplay(answer: string | string[]): string {
 /**
  * 计算答题得分
  */
-export function calcScore(quiz: QuizData, answers: UserAnswer[]): ScoreResult {
+export function calcScore(quiz: any, answers: UserAnswer[]): ScoreResult {
   const detail: { questionId: string; correct: boolean }[] = [];
   let correctCount = 0;
   let totalCount = 0;
 
-  // 检查选择题
-  if (quiz.multiple_choice) {
-    quiz.multiple_choice.forEach((q) => {
-      totalCount++;
-      const userAnswer = answers.find((a) => a.questionId === `mc-${q.id}`);
-      let isCorrect = false;
+  // Helper to process questions
+  const processQuestion = (q: any, typePrefix: string, checkFn: (q: any, ans: any) => boolean) => {
+    totalCount++;
+    const questionId = `${typePrefix}-${q.id}`;
+    const userAnswer = answers.find((a) => a.questionId === questionId);
+    let isCorrect = false;
 
-      if (userAnswer) {
-        const userValue = Array.isArray(userAnswer.value)
-          ? userAnswer.value[0]
-          : userAnswer.value;
+    if (userAnswer) {
+      isCorrect = checkFn(q, userAnswer.value);
+    }
+
+    if (isCorrect) {
+      correctCount++;
+    }
+
+    detail.push({
+      questionId,
+      correct: isCorrect,
+    });
+  };
+
+  // 1. Multiple Choice
+  if (quiz.multiple_choice) {
+    quiz.multiple_choice.forEach((q: any) => {
+      processQuestion(q, 'mc', (q, val) => {
+        const userValue = Array.isArray(val) ? val[0] : val;
         const answerLetter = extractAnswerLetter(q.answer);
         const userLetter = extractAnswerLetter(userValue);
-
         if (answerLetter && userLetter) {
-          isCorrect = answerLetter === userLetter;
-        } else {
-          // 如果没有字母，则进行文本比较
-          isCorrect = normalizeAnswer(userValue) === normalizeAnswer(q.answer);
+          return answerLetter === userLetter;
         }
-      }
-
-      if (isCorrect) {
-        correctCount++;
-      }
-
-      detail.push({
-        questionId: `mc-${q.id}`,
-        correct: isCorrect,
+        return normalizeAnswer(userValue) === normalizeAnswer(q.answer);
       });
     });
   }
 
-  // 检查填空题
-  if (quiz.fill_in_blank) {
-    quiz.fill_in_blank.forEach((q) => {
-      totalCount++;
-      const userAnswer = answers.find((a) => a.questionId === `fb-${q.id}`);
-      let isCorrect = false;
+  // 2. Multi Select
+  if (quiz.multi_select) {
+    quiz.multi_select.forEach((q: any) => {
+      processQuestion(q, 'ms', (q, val) => {
+        // val should be array of strings (letters)
+        if (!Array.isArray(val) || val.length === 0) return false;
 
-      if (userAnswer) {
-        const userValue = Array.isArray(userAnswer.value)
-          ? userAnswer.value[0]
-          : userAnswer.value;
-        isCorrect = checkFillBlank(userValue, q.answer);
-      }
+        let correctAnswers: string[] = [];
+        try {
+          correctAnswers = Array.isArray(q.answer) ? q.answer : JSON.parse(q.answer);
+        } catch {
+          correctAnswers = [q.answer];
+        }
 
-      if (isCorrect) {
-        correctCount++;
-      }
+        // Normalize both to sorted letters
+        const normUser = val.map(v => extractAnswerLetter(v)).filter(Boolean).sort().join('');
+        const normCorrect = correctAnswers.map(v => extractAnswerLetter(v)).filter(Boolean).sort().join('');
 
-      detail.push({
-        questionId: `fb-${q.id}`,
-        correct: isCorrect,
+        return normUser === normCorrect;
       });
+    });
+  }
+
+  // 3. True/False
+  if (quiz.true_false) {
+    quiz.true_false.forEach((q: any) => {
+      processQuestion(q, 'tf', (q, val) => {
+        return String(val).toLowerCase() === String(q.answer).toLowerCase();
+      });
+    });
+  }
+
+  // 4. Fill in Blank
+  if (quiz.fill_in_blank) {
+    quiz.fill_in_blank.forEach((q: any) => {
+      processQuestion(q, 'fb', (q, val) => {
+        const userValue = Array.isArray(val) ? val[0] : val;
+        return checkFillBlank(userValue, q.answer);
+      });
+    });
+  }
+
+  // 5. Short Answer (Manual/AI Grading - Counted in total but not auto-correct)
+  if (quiz.short_answer) {
+    quiz.short_answer.forEach((q: any) => {
+      // For now, we mark them as incorrect or pending. 
+      // To avoid "0/X" looking bad if they answered, maybe we can check if they answered something?
+      // But strictly speaking, score is for *correct* answers.
+      // Let's count them in total, but they won't be "correct" automatically.
+      processQuestion(q, 'sa', () => false);
+    });
+  }
+
+  // 6. Coding (Manual/AI Grading)
+  if (quiz.coding) {
+    quiz.coding.forEach((q: any) => {
+      processQuestion(q, 'code', () => false);
     });
   }
 

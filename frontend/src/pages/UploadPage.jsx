@@ -4,7 +4,7 @@ import { Upload, FileText, CheckCircle, Loader2, AlertCircle } from 'lucide-reac
 import { uploadFile, generateCourse, parseCourse, fetchChapters, fetchChapterQuiz } from '../api';
 export default function UploadPage() {
     const [file, setFile] = useState(null);
-    const [step, setStep] = useState('upload'); // upload, processing, complete
+    const [step, setStep] = useState('upload'); // upload (上传), processing (处理中), complete (完成)
     const [logs, setLogs] = useState([]);
     const [courseId, setCourseId] = useState(null);
     const [error, setError] = useState(null);
@@ -31,21 +31,21 @@ export default function UploadPage() {
         setError(null);
 
         try {
-            // 1. Upload
+            // 1. 上传
             addLog("正在上传文件...");
             const uploadRes = await uploadFile(file);
             const cid = uploadRes.course_id;
             setCourseId(cid);
             addLog(`上传成功: ${uploadRes.filename}`);
 
-            // 2. Trigger Parsing
+            // 2. 触发解析
             addLog("正在解析章节...");
             await parseCourse(cid);
             addLog("解析任务已提交...");
 
-            // 3. Poll for progress
+            // 3. 轮询进度
             let attempts = 0;
-            const maxAttempts = 30; // 60 seconds timeout
+            const maxAttempts = 30; // 60 秒超时
 
             const pollInterval = setInterval(async () => {
                 attempts++;
@@ -65,7 +65,7 @@ export default function UploadPage() {
                     if (attempts >= maxAttempts) {
                         clearInterval(pollInterval);
                         setError("生成超时，请稍后在仪表盘查看结果。");
-                        setStep('complete'); // Allow user to go back even if timeout
+                        setStep('complete'); // 即使超时也允许用户返回
                     }
                 } catch (err) {
                     console.error(err);

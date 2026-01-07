@@ -64,14 +64,14 @@ const QuestionsPage = () => {
   const [quizData, setQuizData] = useState(null);
   const [quizLoading, setQuizLoading] = useState(false);
 
-  // Custom Dropdown State
+  // 自定义下拉菜单状态
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Export Modal State
+  // 导出模态框状态
   const [showExportModal, setShowExportModal] = useState(false);
 
-  // Click outside to close dropdown
+  // 点击外部关闭下拉菜单
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -84,10 +84,10 @@ const QuestionsPage = () => {
     };
   }, []);
 
-  // 'review' (看题模式) or 'exam' (答题模式)
+  // 'review' (看题模式) 或 'exam' (答题模式)
   const [viewMode, setViewMode] = useState('review');
 
-  // 1. Load Course & Chapters
+  // 1. 加载课程和章节
   useEffect(() => {
     const loadData = async () => {
       if (!courseId) return;
@@ -117,14 +117,14 @@ const QuestionsPage = () => {
     loadData();
   }, [courseId]);
 
-  // 2. Load Quiz when chapter changes
+  // 2. 当章节改变时加载测验
   useEffect(() => {
     const loadQuiz = async () => {
       if (!selectedChapterId) return;
 
       setQuizLoading(true);
       setQuizData(null);
-      // Reset to review mode when changing chapters
+      // 切换章节时重置为看题模式
       setViewMode('review');
 
       try {
@@ -157,12 +157,12 @@ const QuestionsPage = () => {
     try {
       const response = await exportChapterQuiz(selectedChapterId, includeAnswers);
 
-      // Create blob link to download
+      // 创建 blob 链接以进行下载
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
 
-      // Try to get filename from headers or default
+      // 尝试从标头或默认值获取文件名
       const contentDisposition = response.headers['content-disposition'];
       let filename = `chapter_${selectedChapterId}_quiz.docx`;
 
@@ -184,7 +184,7 @@ const QuestionsPage = () => {
       document.body.appendChild(link);
       link.click();
 
-      // Cleanup
+      // 清理
       link.parentNode.removeChild(link);
       window.URL.revokeObjectURL(url);
 
@@ -207,7 +207,7 @@ const QuestionsPage = () => {
       />
 
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* Header */}
+        {/* 头部 */}
         <header className="bg-white rounded-2xl shadow-sm p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <button
@@ -240,7 +240,7 @@ const QuestionsPage = () => {
                 />
               </button>
 
-              {/* Custom Dropdown Menu */}
+              {/* 自定义下拉菜单 */}
               <div
                 className={`absolute top-full left-0 w-full mt-1 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50 transition-all duration-200 origin-top ${isDropdownOpen
                   ? 'opacity-100 scale-100 translate-y-0 visible'
@@ -284,10 +284,10 @@ const QuestionsPage = () => {
               >
                 <AlertCircle size={14} /> 错题本
               </Link>
-            
-              {/* Mode Switcher with Sliding Animation */}
+
+              {/* 带滑动动画的模式切换器 */}
               <div className="relative flex bg-gray-100 p-1 rounded-lg flex-1 isolate">
-                {/* Sliding Pill */}
+                {/* 滑动药丸 */}
                 <div
                   className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-md bg-white shadow-sm transition-all duration-300 ease-in-out z-[-1] ${viewMode === 'review' ? 'left-1' : 'left-[calc(50%)]'
                     }`}
@@ -309,7 +309,7 @@ const QuestionsPage = () => {
                 </button>
               </div>
 
-              {/* Export Button */}
+              {/* 导出按钮 */}
               {quizData && (
                 <button
                   onClick={() => setShowExportModal(true)}
@@ -320,7 +320,7 @@ const QuestionsPage = () => {
                 </button>
               )}
 
-              {/* Generate Button */}
+              {/* 生成按钮 */}
               <button
                 onClick={() => navigate(`/course/${courseId}/config`)}
                 className="flex items-center justify-center gap-2 px-4 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-all duration-300 shadow-sm hover:shadow-md whitespace-nowrap"
@@ -332,7 +332,7 @@ const QuestionsPage = () => {
           </div>
         </header>
 
-        {/* Content */}
+        {/* 内容 */}
         <div className="bg-white rounded-2xl shadow-sm min-h-[500px] p-6">
           {quizLoading ? (
             <div className="text-center py-20 text-gray-400">正在加载题目...</div>

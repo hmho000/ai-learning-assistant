@@ -32,7 +32,7 @@ def open_browser_delayed():
 
 
 def load_env():
-    """Load environment variables from .env file"""
+    """从 .env 文件加载环境变量"""
     env_path = ".env"
     if os.path.exists(env_path):
         print(f"[INFO] Loading environment variables from {env_path}")
@@ -99,7 +99,7 @@ def check_and_build_frontend(root_dir: str):
                 try:
                     os.remove(package_lock_path)
                 except OSError:
-                     pass # Ignore if failed to remove lock file
+                     pass # 如果删除锁定文件失败则忽略
                 
             print("[INFO] 重新运行 npm install...")
             subprocess.run(["npm", "install"], cwd=frontend_dir, check=True, shell=True)
@@ -117,7 +117,7 @@ def check_and_build_frontend(root_dir: str):
 
 def main() -> None:
     """启动 uvicorn 服务并在浏览器中打开首页。"""
-    # Load .env first
+    # 首先加载 .env
     load_env()
     
     # 处理打包后的路径：如果是 PyInstaller 打包的 exe，使用 exe 所在目录

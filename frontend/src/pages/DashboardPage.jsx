@@ -17,7 +17,7 @@ export default function DashboardPage() {
             setCourses(data);
             setError(null);
 
-            // Check if any course needs polling
+            // 检查是否有课程需要轮询
             const hasActiveJobs = data.some(c =>
                 ['processing', 'parsing', 'generating'].includes(c.status)
             );
@@ -49,7 +49,7 @@ export default function DashboardPage() {
     }, []);
 
     const handleDelete = async (e, courseId) => {
-        e.preventDefault(); // Prevent navigation
+        e.preventDefault(); // 阻止导航
         if (!window.confirm("确定要删除这个课程吗？")) return;
 
         try {
@@ -115,7 +115,7 @@ export default function DashboardPage() {
                                 to={`/course/${course.id}`}
                                 className="group bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all relative block"
                             >
-                                {/* Delete Button */}
+                                {/* 删除按钮 */}
                                 <button
                                     onClick={(e) => handleDelete(e, course.id)}
                                     className="absolute top-4 right-4 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors z-10"
@@ -124,7 +124,7 @@ export default function DashboardPage() {
                                     <Trash2 size={16} />
                                 </button>
 
-                                {/* Status Badge (Only for error or ready, active jobs use Progress Bar) */}
+                                {/* 状态徽章（仅用于错误或就绪状态，活动任务使用进度条） */}
                                 <div className="absolute top-4 left-4">
                                     {course.status === 'error' ? (
                                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 text-xs font-medium">
@@ -151,7 +151,7 @@ export default function DashboardPage() {
                                     {course.description || "暂无描述"}
                                 </p>
 
-                                {/* Progress Bar or Action Link */}
+                                {/* 进度条或操作链接 */}
                                 {['processing', 'parsing', 'generating'].includes(course.status) ? (
                                     <CourseProgressBar course={course} />
                                 ) : (

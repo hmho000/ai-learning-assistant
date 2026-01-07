@@ -1,13 +1,17 @@
 import React, { useState, useMemo } from "react";
 import { UserAnswer } from "../../types/quiz";
 import MultipleChoiceQuestionExam from "./MultipleChoiceQuestionExam";
+import MultiSelectQuestionExam from "./MultiSelectQuestionExam";
+import TrueFalseQuestionExam from "./TrueFalseQuestionExam";
 import FillInBlankQuestionExam from "./FillInBlankQuestionExam";
+import ShortAnswerQuestionExam from "./ShortAnswerQuestionExam";
+import CodingQuestionExam from "./CodingQuestionExam";
 import QuizExamSummary from "./QuizExamSummary";
 import { saveQuizResult } from "../../utils/quizStorage";
 import { calcScore } from "../../utils/quizUtils";
-import { mistakeApi } from "../../api";
+import { mistakeApi, gradeShortAnswer, reviewCode } from "../../api";
 
-// Define local interfaces for the API data structure if not imported
+// 如果未导入，则定义 API 数据结构的本地接口
 interface Question {
   id: number;
   type: string;
@@ -38,16 +42,32 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
   const [score, setScore] = useState<number | null>(null);
   const [scoreResult, setScoreResult] = useState<any>(null);
 
-  // Filter questions by type
+  // 按类型筛选题目
   const multipleChoiceQuestions = useMemo(() =>
     quiz.questions.filter(q => q.type === "multiple_choice"),
+    [quiz.questions]);
+
+  const multiSelectQuestions = useMemo(() =>
+    quiz.questions.filter(q => q.type === "multi_select"),
+    [quiz.questions]);
+
+  const trueFalseQuestions = useMemo(() =>
+    quiz.questions.filter(q => q.type === "true_false"),
     [quiz.questions]);
 
   const fillInBlankQuestions = useMemo(() =>
     quiz.questions.filter(q => q.type === "fill_in_blank"),
     [quiz.questions]);
 
-  const handleAnswerChange = (questionId: string, value: string | string[]) => {
+  const shortAnswerQuestions = useMemo(() =>
+    quiz.questions.filter(q => q.type === "short_answer"),
+    [quiz.questions]);
+
+  const codingQuestions = useMemo(() =>
+    quiz.questions.filter(q => q.type === "coding"),
+    [quiz.questions]);
+
+  const handleAnswerChange = (questionId: string, value: any) => {
     setAnswers((prev) => {
       const idx = prev.findIndex((a) => a.questionId === questionId);
       if (idx === -1) {
@@ -59,10 +79,12 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
     });
   };
 
-  const handleSubmit = () => {
-    // Need to adapt calcScore to handle this structure or adapt the structure to calcScore
-    // For simplicity, let's adapt the structure to match what calcScore expects (legacy)
-    const legacyQuizFormat = {
+  const [isGrading, setIsGrading] = useState(false);
+
+  const handleSubmit = async () => {
+    setIsGrading(true);
+
+    const quizFormat = {
       meta: {
         chapter_index: 0,
         chapter_title: "Chapter",
@@ -76,7 +98,32 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
         answer: q.answer,
         explanation: q.explanation || ""
       })),
+      multi_select: multiSelectQuestions.map(q => ({
+        id: q.id,
+        question: q.stem,
+        options: q.options_json ? JSON.parse(q.options_json) : [],
+        answer: q.answer,
+        explanation: q.explanation || ""
+      })),
+      true_false: trueFalseQuestions.map(q => ({
+        id: q.id,
+        question: q.stem,
+        answer: q.answer,
+        explanation: q.explanation || ""
+      })),
       fill_in_blank: fillInBlankQuestions.map(q => ({
+        id: q.id,
+        question: q.stem,
+        answer: q.answer,
+        explanation: q.explanation || ""
+      })),
+      short_answer: shortAnswerQuestions.map(q => ({
+        id: q.id,
+        question: q.stem,
+        answer: q.answer,
+        explanation: q.explanation || ""
+      })),
+      coding: codingQuestions.map(q => ({
         id: q.id,
         question: q.stem,
         answer: q.answer,
@@ -84,10 +131,55 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
       }))
     };
 
-    const result = calcScore(legacyQuizFormat, answers);
+    // 1. 计算客观题得分
+    const result = calcScore(quizFormat, answers);
+
+    // 2. 简答题和代码题的 AI 评分
+    // 仅当有题目且用户已作答时进行
+    const gradingPromises: Promise<void>[] = [];
+
+    // 简答题评分
+    shortAnswerQuestions.forEach(q => {
+      const ans = answers.find(a => a.questionId === `sa-${q.id}`);
+      if (ans && ans.value && String(ans.value).trim()) {
+        gradingPromises.push(
+          gradeShortAnswer(q.id, String(ans.value)).then(res => {
+            // 如果得分 >= 6，算作正确
+            if (res.score >= 6) {
+              result.score++;
+              const detailItem = result.detail.find(d => d.questionId === `sa-${q.id}`);
+              if (detailItem) detailItem.correct = true;
+            }
+          }).catch(err => console.error("简答题评分错误", err))
+        );
+      }
+    });
+
+    // 代码题评分
+    codingQuestions.forEach(q => {
+      const ans = answers.find(a => a.questionId === `code-${q.id}`);
+      if (ans && ans.value && String(ans.value).trim()) {
+        gradingPromises.push(
+          reviewCode(q.id, String(ans.value)).then(res => {
+            // 如果得分 >= 6，算作正确
+            if (res.score >= 6) {
+              result.score++;
+              const detailItem = result.detail.find(d => d.questionId === `code-${q.id}`);
+              if (detailItem) detailItem.correct = true;
+            }
+          }).catch(err => console.error("代码题评分错误", err))
+        );
+      }
+    });
+
+    if (gradingPromises.length > 0) {
+      await Promise.all(gradingPromises); // 等待所有 AI 评分完成
+    }
+
     setScore(result.score);
     setScoreResult(result);
     setSubmitted(true);
+    setIsGrading(false);
 
     saveQuizResult({
       courseId: courseId ? String(courseId) : "default-course",
@@ -104,7 +196,7 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
       const wrongQuestions = result.detail.filter((d) => !d.correct);
       wrongQuestions.forEach((detail) => {
         // 从 questionId 中提取题目 ID（格式：mc-123 或 fb-123）
-        const questionIdMatch = detail.questionId.match(/(mc|fb)-(\d+)/);
+        const questionIdMatch = detail.questionId.match(/(mc|fb|ms|tf|sa|code)-(\d+)/);
         if (questionIdMatch) {
           const questionId = parseInt(questionIdMatch[2]);
           mistakeApi.addMistake(courseId, questionId).catch((error) => {
@@ -115,14 +207,21 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
     }
   };
 
+  // Helper for dynamic section numbering
+  let sectionIndex = 0;
+  const getSectionTitle = (title: string) => {
+    sectionIndex++;
+    const chineseNumbers = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+    return `${chineseNumbers[sectionIndex - 1]}、${title}`;
+  };
+
   return (
     <div className="space-y-6">
       {multipleChoiceQuestions.length > 0 && (
         <section>
-          <h2 className="text-xl font-semibold mb-2">一、选择题</h2>
+          <h2 className="text-xl font-semibold mb-2">{getSectionTitle("单选题")}</h2>
           {multipleChoiceQuestions.map((q, index) => {
             const options = q.options_json ? JSON.parse(q.options_json) : [];
-            // Adapt to component props
             const qProps = {
               id: q.id,
               question: q.stem,
@@ -146,9 +245,64 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
         </section>
       )}
 
+      {multiSelectQuestions.length > 0 && (
+        <section>
+          <h2 className="text-xl font-semibold mb-2">{getSectionTitle("多选题")}</h2>
+          {multiSelectQuestions.map((q, index) => {
+            const options = q.options_json ? JSON.parse(q.options_json) : [];
+            const qProps = {
+              id: q.id,
+              question: q.stem,
+              options: options,
+              answer: q.answer, // String or JSON string
+              explanation: q.explanation
+            };
+
+            return (
+              <MultiSelectQuestionExam
+                key={q.id}
+                index={index + 1}
+                question={qProps}
+                value={(answers.find((a) => a.questionId === `ms-${q.id}`)?.value as string[]) ?? []}
+                onChange={(value) => handleAnswerChange(`ms-${q.id}`, value)}
+                disabled={submitted}
+                showAnswer={submitted}
+              />
+            );
+          })}
+        </section>
+      )}
+
+      {trueFalseQuestions.length > 0 && (
+        <section>
+          <h2 className="text-xl font-semibold mb-2">{getSectionTitle("判断题")}</h2>
+          {trueFalseQuestions.map((q, index) => {
+            const qProps = {
+              id: q.id,
+              question: q.stem,
+              options: ["True", "False"],
+              answer: q.answer,
+              explanation: q.explanation
+            };
+
+            return (
+              <TrueFalseQuestionExam
+                key={q.id}
+                index={index + 1}
+                question={qProps}
+                value={(answers.find((a) => a.questionId === `tf-${q.id}`)?.value as string) ?? ""}
+                onChange={(value) => handleAnswerChange(`tf-${q.id}`, value)}
+                disabled={submitted}
+                showAnswer={submitted}
+              />
+            );
+          })}
+        </section>
+      )}
+
       {fillInBlankQuestions.length > 0 && (
         <section>
-          <h2 className="text-xl font-semibold mb-2">二、填空题</h2>
+          <h2 className="text-xl font-semibold mb-2">{getSectionTitle("填空题")}</h2>
           {fillInBlankQuestions.map((q, index) => {
             const qProps = {
               id: q.id,
@@ -174,13 +328,77 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
         </section>
       )}
 
+      {shortAnswerQuestions.length > 0 && (
+        <section>
+          <h2 className="text-xl font-semibold mb-2">{getSectionTitle("简答题")}</h2>
+          {shortAnswerQuestions.map((q, index) => {
+            const qProps = {
+              id: q.id,
+              question: q.stem,
+              answer: q.answer,
+              explanation: q.explanation
+            };
+
+            return (
+              <ShortAnswerQuestionExam
+                key={q.id}
+                index={index + 1}
+                question={qProps}
+                value={
+                  (answers.find((a) => a.questionId === `sa-${q.id}`)?.value as string) ?? ""
+                }
+                onChange={(value) => handleAnswerChange(`sa-${q.id}`, value)}
+                disabled={submitted}
+                showAnswer={submitted}
+              />
+            );
+          })}
+        </section>
+      )}
+
+      {codingQuestions.length > 0 && (
+        <section>
+          <h2 className="text-xl font-semibold mb-2">{getSectionTitle("代码题")}</h2>
+          {codingQuestions.map((q, index) => {
+            const qProps = {
+              id: q.id,
+              question: q.stem,
+              answer: q.answer, // Template
+              explanation: q.explanation
+            };
+
+            return (
+              <CodingQuestionExam
+                key={q.id}
+                index={index + 1}
+                question={qProps}
+                value={
+                  (answers.find((a) => a.questionId === `code-${q.id}`)?.value as string) ?? ""
+                }
+                onChange={(value) => handleAnswerChange(`code-${q.id}`, value)}
+                disabled={submitted}
+                showAnswer={submitted}
+              />
+            );
+          })}
+        </section>
+      )}
+
       <div className="flex gap-4 items-center">
         {!submitted && (
           <button
-            className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 transition"
+            className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 transition disabled:opacity-50 flex items-center gap-2"
             onClick={handleSubmit}
+            disabled={isGrading}
           >
-            提交答案
+            {isGrading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                AI 评分中...
+              </>
+            ) : (
+              "提交答案"
+            )}
           </button>
         )}
         {submitted && score !== null && (

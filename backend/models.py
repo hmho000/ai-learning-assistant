@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from sqlmodel import Field, Relationship, SQLModel
 
-# === Models ===
+# === 模型 ===
 
 class Course(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -11,7 +11,7 @@ class Course(SQLModel, table=True):
     status: str = Field(default="processing")
     created_at: datetime = Field(default_factory=datetime.now)
     
-    # Generation Progress Tracking
+    # 生成进度追踪
     generation_total_chapters: int = Field(default=0)
     generation_current_chapter: int = Field(default=0)
     generation_status_message: Optional[str] = Field(default=None)
@@ -41,17 +41,17 @@ class Quiz(SQLModel, table=True):
 class Question(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     quiz_id: int = Field(foreign_key="quiz.id")
-    type: str  # "multiple_choice" or "fill_in_blank"
+    type: str  # "multiple_choice" 或 "fill_in_blank"
     
     # 题目内容
     stem: str # 题干
-    options_json: Optional[str] = None # JSON string for options ["A...", "B..."]
+    options_json: Optional[str] = None # 选项的 JSON 字符串 ["A...", "B..."]
     answer: str
     explanation: Optional[str] = None
     
     quiz: Quiz = Relationship(back_populates="questions")
 
-# === Read Schemas ===
+# === 读取模式 ===
 
 class QuestionRead(SQLModel):
     id: int

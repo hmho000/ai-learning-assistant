@@ -34,7 +34,7 @@ const FillInBlankQuestionExam = ({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="请输入答案"
+          placeholder="请输入答案（多个空请用空格或逗号分隔）"
           disabled={disabled}
           className="rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/40 disabled:opacity-50 disabled:cursor-not-allowed"
         />
