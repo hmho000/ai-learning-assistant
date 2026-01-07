@@ -87,3 +87,30 @@ export const exportChapterQuiz = async (chapterId: number, includeAnswers: boole
   });
   return res; // Return full response to access headers if needed, or just data
 };
+
+
+// ==================== 错题本 API ====================
+export const mistakeApi = {
+  // 添加错题
+  addMistake: async (courseId: number, questionId: number) => {
+    // axios 会自动处理 JSON，所以直接传对象即可
+    const res = await api.post('/mistakes', { 
+      course_id: courseId, 
+      question_id: questionId 
+    });
+    return res.data;
+  },
+
+  // 获取课程错题
+  getMistakes: async (courseId: number) => {
+    // URL 已经包含了 /api 前缀，所以这里直接写后面的部分
+    const res = await api.get(`/courses/${courseId}/mistakes`);
+    return res.data; // 返回的是题目列表
+  },
+
+  // 移除错题
+  removeMistake: async (questionId: number) => {
+    const res = await api.delete(`/mistakes/${questionId}`);
+    return res.data;
+  }
+};

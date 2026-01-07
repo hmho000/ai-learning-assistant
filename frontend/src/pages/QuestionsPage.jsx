@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import QuizExamView from "../components/quiz/QuizExamView";
 import QuizReviewView from "../components/quiz/QuizReviewView";
 import { fetchCourses, fetchChapters, fetchChapterQuiz, exportChapterQuiz } from "../api";
-import { ArrowLeft, BookOpen, Eye, PenTool, ChevronDown, Download, X, FileText, CheckSquare } from "lucide-react";
+import { ArrowLeft, BookOpen, Eye, PenTool, ChevronDown, Download, X, FileText, CheckSquare, AlertCircle } from "lucide-react";
 
 const ExportModal = ({ isOpen, onClose, onExport }) => {
   if (!isOpen) return null;
@@ -275,7 +275,16 @@ const QuestionsPage = () => {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center flex-wrap">
+              {/* 新增的错题本入口 - 红色按钮 */}
+              <Link
+                to={`/course/${courseId}/mistakes`}
+                className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-all duration-300 whitespace-nowrap"
+                title="查看错题本"
+              >
+                <AlertCircle size={14} /> 错题本
+              </Link>
+            
               {/* Mode Switcher with Sliding Animation */}
               <div className="relative flex bg-gray-100 p-1 rounded-lg flex-1 isolate">
                 {/* Sliding Pill */}

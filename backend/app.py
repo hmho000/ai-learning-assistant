@@ -17,10 +17,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 from .database import create_db_and_tables, get_session
-from .models import Course, Chapter, Quiz, Question, QuizReadWithQuestions, ChapterRead
+from .models import Course, Chapter, Quiz, Question, QuizReadWithQuestions, ChapterRead, MistakeRecord
 from .services import parse_chapters_from_pdf, generate_quiz_for_chapter, save_quiz_to_db
 import shutil
 from pathlib import Path
+from datetime import datetime
 
 # === 创建 FastAPI 实例 ===
 app = FastAPI(title="AI 学习助手 Backend")
@@ -132,6 +133,61 @@ def upload_file(file: UploadFile = File(...), session: Session = Depends(get_ses
     session.refresh(course)
     
     return {"status": "success", "course_id": course.id, "filename": file.filename}
+
+#错题
+
+# 1. 添加错题 (当用户答错时调用)
+@app.post("/api/mistakes")
+def add_mistake(record: MistakeRecord, session: Session = Depends(get_session)):
+    # 防止重复添加：检查同一课程下的同一道题是否已经在错题本里了
+    existing = session.exec(
+        select(MistakeRecord).where(
+            MistakeRecord.question_id == record.question_id,
+            MistakeRecord.course_id == record.course_id
+        )
+    ).first()
+    if existing:
+        # 如果已经存在，更新时间即可
+        existing.created_at = datetime.utcnow()
+        session.add(existing)
+        session.commit()
+        return {"status": "updated", "message": "Mistake record updated"}
+    
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+    return record
+
+# 2. 获取某课程的所有错题 (包含题目详情)
+@app.get("/api/courses/{course_id}/mistakes")
+def get_course_mistakes(course_id: int, session: Session = Depends(get_session)):
+    # 这是一个联表查询：从 MistakeRecord 查，同时把对应的 Question 数据抓出来
+    statement = select(Question, MistakeRecord).join(
+        MistakeRecord, Question.id == MistakeRecord.question_id
+    ).where(MistakeRecord.course_id == course_id)
+    results = session.exec(statement).all()
+    
+    # 组装返回数据
+    mistakes = []
+    for question, record in results:
+        # 将题目信息和错题记录时间组合返回
+        q_dict = question.model_dump()
+        q_dict["mistake_date"] = record.created_at.isoformat() if hasattr(record.created_at, 'isoformat') else str(record.created_at)
+        mistakes.append(q_dict)
+        
+    return mistakes
+
+# 3. 移除错题 
+@app.delete("/api/mistakes/{question_id}")
+def remove_mistake(question_id: int, session: Session = Depends(get_session)):
+    # 删除该题目的错题记录（一道题只属于一个课程，所以这样删除是安全的）
+    statement = select(MistakeRecord).where(MistakeRecord.question_id == question_id)
+    results = session.exec(statement)
+    for mistake in results:
+        session.delete(mistake)
+    session.commit()
+    return {"status": "success", "message": "Removed from mistake book"}
+
 
 @app.get("/api/courses", response_model=list[Course])
 async def get_courses(session: Session = Depends(get_session)):
