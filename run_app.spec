@@ -122,7 +122,7 @@ a = Analysis(
     datas=[
         ('backend', 'backend'),  # Include backend package
         ('frontend/dist', 'frontend/dist'), # Include frontend build artifacts
-        ('.env.template', '.') # Include env template
+        ('.env.example', '.') # Include env template
     ] + dynamic_datas,
     hiddenimports=dynamic_hiddenimports,
     hookspath=[],

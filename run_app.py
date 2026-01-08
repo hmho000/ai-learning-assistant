@@ -139,7 +139,7 @@ def main() -> None:
     print("=" * 50)
     print(f"工作目录: {root}")
     print("正在启动后端服务...")
-    print("服务地址: http://127.0.0.1:8000")
+    print("服务地址: http://0.0.0.0:8000 (Local: http://127.0.0.1:8000)")
     print("=" * 50)
     print()
     
@@ -152,7 +152,7 @@ def main() -> None:
         # 这样在打包后的 exe 中也能正常工作
         uvicorn.run(
             "backend.app:app",
-            host="127.0.0.1",
+            host="0.0.0.0",
             port=8000,
             log_level="info"
         )

@@ -122,8 +122,8 @@ if not exist dist\.env (
         echo 复制本地 .env 到 dist 目录...
         copy .env dist\.env >nul
     ) else (
-        echo 复制 .env.template 到 dist 目录...
-        copy .env.template dist\.env >nul
+        echo 复制 .env.example 到 dist 目录...
+        copy .env.example dist\.env >nul
     )
 )
 
