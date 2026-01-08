@@ -90,10 +90,19 @@ export const exportChapterQuiz = async (chapterId: number, includeAnswers: boole
 
 
 // ==================== 错题本 API ====================
+// 题型显示顺序和中文名称映射
+const QUESTION_TYPE_NAMES: Record<string, string> = {
+  'multiple_choice': '单选题',
+  'multi_select': '多选题',
+  'fill_in_blank': '填空题',
+  'true_false': '判断题',
+  'short_answer': '简答题',
+  'code': '代码题',
+};
+
 export const mistakeApi = {
   // 添加错题
   addMistake: async (courseId: number, questionId: number) => {
-    // axios 会自动处理 JSON，所以直接传对象即可
     const res = await api.post('/mistakes', { 
       course_id: courseId, 
       question_id: questionId 
@@ -101,16 +110,20 @@ export const mistakeApi = {
     return res.data;
   },
 
-  // 获取课程错题
+  // 获取课程错题（已在后端按题型排序）
   getMistakes: async (courseId: number) => {
-    // URL 已经包含了 /api 前缀，所以这里直接写后面的部分
     const res = await api.get(`/courses/${courseId}/mistakes`);
-    return res.data; // 返回的是题目列表
+    return res.data;
   },
 
-  // 移除错题
-  removeMistake: async (questionId: number) => {
-    const res = await api.delete(`/mistakes/${questionId}`);
+  // 移除错题（修复：现在需要传递 courseId）
+  removeMistake: async (courseId: number, questionId: number) => {
+    const res = await api.delete(`/courses/${courseId}/mistakes/${questionId}`);
     return res.data;
+  },
+
+  // 获取题型中文名称
+  getTypeName: (type: string): string => {
+    return QUESTION_TYPE_NAMES[type] || type;
   }
 };

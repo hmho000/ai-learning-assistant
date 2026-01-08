@@ -41,11 +41,11 @@ class Quiz(SQLModel, table=True):
 class Question(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     quiz_id: int = Field(foreign_key="quiz.id")
-    type: str  # "multiple_choice" or "fill_in_blank"
+    type: str  # "multiple_choice", "multi_select", "fill_in_blank", "true_false", "short_answer", "code"
     
     # 题目内容
     stem: str # 题干
-    options_json: Optional[str] = None # JSON string for options ["A...", "B..."]
+    options_json: Optional[str] = None # JSON string for options ["A...", "B..."]（仅单选/多选题）
     answer: str
     explanation: Optional[str] = None
     
