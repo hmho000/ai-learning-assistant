@@ -195,10 +195,10 @@ const QuizExamView: React.FC<QuizExamViewProps> = ({
     if (courseId) {
       const wrongQuestions = result.detail.filter((d) => !d.correct);
       wrongQuestions.forEach((detail) => {
-        // 从 questionId 中提取题目 ID（格式：mc-123 或 fb-123）
-        const questionIdMatch = detail.questionId.match(/(mc|fb|ms|tf|sa|code)-(\d+)/);
+        // 从 questionId 中提取题目 ID（格式：mc-123, fb-123, tf-123 等）
+        const questionIdMatch = detail.questionId.match(/^[a-z]+-(\d+)$/i);
         if (questionIdMatch) {
-          const questionId = parseInt(questionIdMatch[2]);
+          const questionId = parseInt(questionIdMatch[1]);
           mistakeApi.addMistake(courseId, questionId).catch((error) => {
             console.error("添加错题失败:", error);
           });

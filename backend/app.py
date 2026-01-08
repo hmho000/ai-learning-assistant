@@ -134,7 +134,18 @@ def upload_file(file: UploadFile = File(...), session: Session = Depends(get_ses
     
     return {"status": "success", "course_id": course.id, "filename": file.filename}
 
-#错题
+# === 题型排序常量 ===
+# 定义题型的显示顺序
+QUESTION_TYPE_ORDER = {
+    "multiple_choice": 1,      # 单选题
+    "multi_select": 2,          # 多选题
+    "fill_in_blank": 3,         # 填空题
+    "true_false": 4,            # 判断题
+    "short_answer": 5,          # 简答题
+    "code": 6,                  # 代码题
+}
+
+# === 错题本 API ===
 
 # 1. 添加错题 (当用户答错时调用)
 @app.post("/api/mistakes")
@@ -158,31 +169,73 @@ def add_mistake(record: MistakeRecord, session: Session = Depends(get_session)):
     session.refresh(record)
     return record
 
-# 2. 获取某课程的所有错题 (包含题目详情)
+# 2. 获取某课程的所有错题 (包含题目详情，按题型排序)
 @app.get("/api/courses/{course_id}/mistakes")
 def get_course_mistakes(course_id: int, session: Session = Depends(get_session)):
+    """
+    获取课程的所有错题，按题型顺序返回
+    返回格式：按单选 → 多选 → 填空 → 判断 → 简答 → 代码 排序
+    
+    重要：题号是相对于每个 quiz 的，不是全局 ID
+    - question.id 是数据库全局 ID（用于删除等操作）
+    - question_number 是相对于该 quiz 的题号（1-5）
+    """
     # 这是一个联表查询：从 MistakeRecord 查，同时把对应的 Question 数据抓出来
     statement = select(Question, MistakeRecord).join(
         MistakeRecord, Question.id == MistakeRecord.question_id
     ).where(MistakeRecord.course_id == course_id)
     results = session.exec(statement).all()
     
-    # 组装返回数据
+    # 组装返回数据，计算相对题号
     mistakes = []
     for question, record in results:
+        # 计算该题在其所属 quiz 中、同一类型内的相对位置
+        same_type_questions = session.exec(
+            select(Question)
+            .where(
+                Question.quiz_id == question.quiz_id,
+                Question.type == question.type
+            )
+            .order_by(Question.id)
+        ).all()
+        
+        # 找出该题在同类型题中的相对位置
+        relative_number = 1
+        for idx, q in enumerate(same_type_questions, 1):
+            if q.id == question.id:
+                relative_number = idx
+                break
+        
         # 将题目信息和错题记录时间组合返回
         q_dict = question.model_dump()
         q_dict["mistake_date"] = record.created_at.isoformat() if hasattr(record.created_at, 'isoformat') else str(record.created_at)
+        q_dict["question_number"] = relative_number  # 添加相对题号
         mistakes.append(q_dict)
-        
+    
+    # 按题型优先级、再按相对题号排序
+    def sort_key(item):
+        type_order = QUESTION_TYPE_ORDER.get(item["type"], 999)
+        question_number = item.get("question_number", 999)
+        return (type_order, question_number)
+    
+    mistakes.sort(key=sort_key)
     return mistakes
 
-# 3. 移除错题 
-@app.delete("/api/mistakes/{question_id}")
-def remove_mistake(question_id: int, session: Session = Depends(get_session)):
-    # 删除该题目的错题记录（一道题只属于一个课程，所以这样删除是安全的）
-    statement = select(MistakeRecord).where(MistakeRecord.question_id == question_id)
-    results = session.exec(statement)
+# 3. 移除错题 (修复：加入 course_id 参数确保只删除指定课程的错题)
+@app.delete("/api/courses/{course_id}/mistakes/{question_id}")
+def remove_mistake(course_id: int, question_id: int, session: Session = Depends(get_session)):
+    """
+    移除指定课程的错题
+    参数:
+        course_id: 课程ID
+        question_id: 题目ID
+    """
+    # 精确删除：确保只删除指定课程下的该题目
+    statement = select(MistakeRecord).where(
+        MistakeRecord.question_id == question_id,
+        MistakeRecord.course_id == course_id
+    )
+    results = session.exec(statement).all()
     for mistake in results:
         session.delete(mistake)
     session.commit()
