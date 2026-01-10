@@ -7,5 +7,8 @@ python-multipart
 pymupdf
 requests
 python-docx
+python-docx
+rapidocr_onnxruntime
+Pillow
 
 

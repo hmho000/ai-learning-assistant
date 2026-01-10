@@ -31,6 +31,8 @@ node_modules/
 frontend/node_modules/
 npm-debug.log
 yarn-error.log
+pnpm-lock.yaml
+frontend/pnpm-lock.yaml
 
 # PyInstaller 相关
 # 通常这些文件由 Python 脚本从模板编写

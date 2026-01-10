@@ -18,7 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 from .database import create_db_and_tables, get_session
 from .models import Course, Chapter, Quiz, Question, QuizReadWithQuestions, ChapterRead, MistakeRecord
-from .services import parse_chapters_from_pdf, generate_quiz_for_chapter, save_quiz_to_db
+from .models import Course, Chapter, Quiz, Question, QuizReadWithQuestions, ChapterRead, MistakeRecord
+from .services import parse_chapters_from_file, generate_quiz_for_chapter, save_quiz_to_db
 import shutil
 from pathlib import Path
 from datetime import datetime
@@ -109,11 +110,14 @@ async def api_health():
 @app.post("/api/upload")
 def upload_file(file: UploadFile = File(...), session: Session = Depends(get_session)):
     """
-    上传 PDF 文件，创建 Course 记录
-    注意：使用同步 def 让 FastAPI 在线程池中运行，避免大文件上传阻塞事件循环
+    上传文件，创建 Course 记录
+    支持 PDF 和 图片 (png, jpg, jpeg)
     """
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+    allowed_exts = {".pdf", ".png", ".jpg", ".jpeg"}
+    ext = Path(file.filename).suffix.lower()
+    
+    if ext not in allowed_exts:
+        raise HTTPException(status_code=400, detail="Only PDF and Image files (.png, .jpg, .jpeg) are allowed")
     
     # 保存文件到 data 目录
     upload_dir = Path("data")
@@ -126,7 +130,7 @@ def upload_file(file: UploadFile = File(...), session: Session = Depends(get_ses
         
     # 创建数据库记录
     # 简单起见，用文件名作为课程标题
-    course_title = file.filename.replace(".pdf", "")
+    course_title = file.filename.rsplit(".", 1)[0]
     course = Course(title=course_title, description="Uploaded via Web")
     session.add(course)
     session.commit()
@@ -256,7 +260,7 @@ def process_course_generation(course_id: int, filename: str, session: Session):
         pdf_path = Path("data") / filename
         
         # 1. 解析章节
-        chapters_data = parse_chapters_from_pdf(str(pdf_path))
+        chapters_data = parse_chapters_from_file(str(pdf_path))
         print(f"[Task] Parsed {len(chapters_data)} chapters")
         
         for ch_data in chapters_data:
@@ -311,7 +315,7 @@ def process_course_parsing(course_id: int, filename: str, session: Session):
         pdf_path = Path("data") / filename
         
         # 1. 解析章节
-        chapters_data = parse_chapters_from_pdf(str(pdf_path))
+        chapters_data = parse_chapters_from_file(str(pdf_path))
         print(f"[Task] Parsed {len(chapters_data)} chapters")
         
         for ch_data in chapters_data:
@@ -476,9 +480,22 @@ async def parse_course_endpoint(course_id: int, background_tasks: BackgroundTask
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     
-    # 假设文件名已存储或我们使用标题作为文件名（旧版逻辑）
-    # 理想情况下我们应该存储文件名。目前按照上传逻辑使用 标题 + .pdf
-    filename = f"{course.title}.pdf"
+    # 查找对应的文件（支持多种扩展名）
+    data_dir = Path("data")
+    filename = None
+    # 优先精确匹配（如果逻辑严谨的话应该不会有重名不同后缀），这里简单遍历
+    for ext in [".pdf", ".png", ".jpg", ".jpeg"]:
+        candidate = f"{course.title}{ext}"
+        if (data_dir / candidate).exists():
+            filename = candidate
+            break
+            
+    if not filename:
+         # 尝试一种更宽容的搜索（如果是旧数据可能标题和文件名不一致？）
+         # 也可以尝试 listdir 匹配 startswith
+         raise HTTPException(status_code=404, detail=f"Source file for course '{course.title}' not found in data directory.")
+    
+    print(f"[INFO] Found source file for parsing: {filename}")
     
     course.status = "parsing"
     session.add(course)

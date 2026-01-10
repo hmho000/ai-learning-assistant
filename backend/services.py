@@ -8,6 +8,17 @@ from typing import List, Dict, Any, Optional
 from .models import Chapter, Quiz, Question
 from sqlmodel import Session
 
+# 尝试导入 OCR 模块（假设 experiments 在 Python Path 中，或者相对导入）
+# 注意：在 Docker 或不同运行环境下，路径可能需要调整。
+# 这里假设 backend 和 experiments 同级目录
+import sys
+sys.path.append(str(Path(__file__).parent.parent)) 
+try:
+    from experiments.ocr_demo import ocr_image
+except ImportError:
+    print("[WARN] OCR module not found, image parsing will fail.")
+    ocr_image = None
+
 # === 常量 ===
 DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
 
@@ -22,6 +33,36 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     for page in doc:
         text += page.get_text()
     return text
+
+def parse_chapters_from_file(file_path: str) -> List[Dict[str, Any]]:
+    """
+    从文件提取章节（支持 PDF 和 图片）
+    返回: [{"title": "第1章...", "index": 1, "content": "..."}]
+    """
+    path_obj = Path(file_path)
+    suffix = path_obj.suffix.lower()
+    
+    # 图片处理
+    if suffix in {".png", ".jpg", ".jpeg"}:
+        if not ocr_image:
+            raise RuntimeError("OCR 模块未加载，无法解析图片。")
+        print(f"正在对图片进行 OCR 识别：{file_path} ...")
+        try:
+            text = ocr_image(path_obj)
+        except Exception as e:
+            # 捕获错误并向外抛出更友好的信息，或者直接让上层捕获
+            print(f"[ERROR] OCR Failed: {e}")
+            raise RuntimeError(f"图片解析失败: {e}")
+
+        # 图片通常没有目录结构，直接作为一个章节
+        return [{
+            "title": "识别内容",
+            "index": 1,
+            "content": text
+        }]
+
+    # PDF 处理
+    return parse_chapters_from_pdf(file_path)
 
 def parse_chapters_from_pdf(pdf_path: str) -> List[Dict[str, Any]]:
     """
