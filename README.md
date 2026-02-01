@@ -115,6 +115,7 @@ ai-learning-assistant/
 ## 🚀 快速开始
 
 ### 1. 环境准备
+- Power by **DeepSeek V3**
 - Python 3.10+
 - Node.js 16+ (仅开发需要，运行无需)
 - DeepSeek API Key

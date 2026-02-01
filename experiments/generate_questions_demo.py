@@ -19,6 +19,11 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+try:
+    from .ocr_demo import ocr_image
+except ImportError:
+    from ocr_demo import ocr_image
+
 # 默认输入/输出路径（一般由 run_all.py 显式传入）
 DEFAULT_INPUT_PATH = Path("experiments/output/chapter_text.txt")
 DEFAULT_OUTPUT_PATH = Path("experiments/output/chapter_questions.json")
@@ -104,9 +109,27 @@ def filter_questions(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def load_text(path: Path) -> str:
     if not path.exists():
-        raise FileNotFoundError(f"找不到输入文本文件：{path}")
-    text = path.read_text(encoding="utf-8")
-    print(f"已读取文本，长度 {len(text)} 字符。")
+        raise FileNotFoundError(f"找不到输入文件：{path}")
+    
+    suffix = path.suffix.lower()
+    
+    # 图片扩展名列表
+    image_exts = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"}
+    
+    if suffix in image_exts:
+        print(f"正在对图片进行 OCR 识别：{path} ...")
+        text = ocr_image(path)
+        print(f"OCR 识别完成，长度 {len(text)} 字符。")
+    else:
+        # 默认当做文本处理
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            # 尝试 GBK
+            text = path.read_text(encoding="gbk", errors="ignore")
+            
+        print(f"已读取文本，长度 {len(text)} 字符。")
+    
     return text
 
 

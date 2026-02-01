@@ -8,3 +8,6 @@ python-dotenv
 requests
 pymupdf
 python-docx
+rapidocr_onnxruntime
+Pillow
+pyinstaller

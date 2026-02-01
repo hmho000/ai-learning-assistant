@@ -59,7 +59,7 @@ export default function UploadPage() {
                             navigate(`/course/${cid}/config`);
                         }, 1000);
                     } else {
-                        addLog(`正在解析 PDF... (尝试 ${attempts}/${maxAttempts})`);
+                        addLog(`正在解析文件... (尝试 ${attempts}/${maxAttempts})`);
                     }
 
                     if (attempts >= maxAttempts) {
@@ -111,11 +111,12 @@ export default function UploadPage() {
                                 setIsDragging(false);
                                 if (e.dataTransfer.files && e.dataTransfer.files[0]) {
                                     const droppedFile = e.dataTransfer.files[0];
-                                    if (droppedFile.type === "application/pdf") {
+                                    const fileType = droppedFile.type;
+                                    if (fileType === "application/pdf" || fileType.startsWith("image/")) {
                                         setFile(droppedFile);
                                         setError(null);
                                     } else {
-                                        setError("请上传 PDF 文件");
+                                        setError("请上传 PDF 或 图片文件");
                                     }
                                 }
                             }}
@@ -124,14 +125,14 @@ export default function UploadPage() {
                                 type="file"
                                 ref={fileInputRef}
                                 className="hidden"
-                                accept=".pdf"
+                                accept=".pdf, .png, .jpg, .jpeg"
                                 onChange={handleFileChange}
                             />
                             <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                 <Upload size={32} />
                             </div>
-                            <p className="text-lg font-medium text-gray-900">点击或拖拽上传 PDF 教材</p>
-                            <p className="text-gray-500 mt-2">支持 PDF 格式，最大 200MB</p>
+                            <p className="text-lg font-medium text-gray-900">点击或拖拽上传 PDF / 图片</p>
+                            <p className="text-gray-500 mt-2">支持 PDF, PNG, JPG，最大 200MB</p>
                         </div>
 
                         {file && (
