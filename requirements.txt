@@ -1,11 +1,10 @@
 fastapi
 uvicorn
-pyinstaller
-sqlmodel
 sqlmodel
 python-multipart
-pymupdf
+python-jose[cryptography]
+bcrypt
+python-dotenv
 requests
+pymupdf
 python-docx
-
-

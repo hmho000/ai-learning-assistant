@@ -16,8 +16,10 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Backgroun
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
-from .database import create_db_and_tables, get_session
+from .database import init_auth_db, get_user_engine
 from .models import Course, Chapter, Quiz, Question, QuizReadWithQuestions, ChapterRead, MistakeRecord
+from .routers import auth
+from .routers.auth import get_current_user_id
 from .services import parse_chapters_from_pdf, generate_quiz_for_chapter, save_quiz_to_db
 import shutil
 from pathlib import Path
@@ -28,7 +30,15 @@ app = FastAPI(title="AI 学习助手 Backend")
 
 @app.on_event("startup")
 def on_startup():
-    create_db_and_tables()
+    init_auth_db()
+
+app.include_router(auth.router)
+
+def get_current_user_session(user_id: int = Depends(get_current_user_id)):
+    """获取当前登录用户的数据库会话"""
+    engine = get_user_engine(user_id)
+    with Session(engine) as session:
+        yield session
 
 
 # === 静态文件 & 前端托管 ===
@@ -107,7 +117,11 @@ async def api_health():
     return {"status": "ok"}
 
 @app.post("/api/upload")
-def upload_file(file: UploadFile = File(...), session: Session = Depends(get_session)):
+def upload_file(
+    file: UploadFile = File(...), 
+    session: Session = Depends(get_current_user_session),
+    user_id: int = Depends(get_current_user_id)
+):
     """
     上传 PDF 文件，创建 Course 记录
     注意：使用同步 def 让 FastAPI 在线程池中运行，避免大文件上传阻塞事件循环
@@ -115,9 +129,12 @@ def upload_file(file: UploadFile = File(...), session: Session = Depends(get_ses
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
     
-    # 保存文件到 data 目录
-    upload_dir = Path("data")
-    upload_dir.mkdir(exist_ok=True)
+    # 保存文件到用户独立目录
+    from .database import get_user_db_path
+    user_db_path = get_user_db_path(user_id)
+    upload_dir = user_db_path.parent / "files"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    
     file_path = upload_dir / file.filename
     
     # 使用 shutil.copyfileobj 高效写入
@@ -149,7 +166,7 @@ QUESTION_TYPE_ORDER = {
 
 # 1. 添加错题 (当用户答错时调用)
 @app.post("/api/mistakes")
-def add_mistake(record: MistakeRecord, session: Session = Depends(get_session)):
+def add_mistake(record: MistakeRecord, session: Session = Depends(get_current_user_session)):
     # 防止重复添加：检查同一课程下的同一道题是否已经在错题本里了
     existing = session.exec(
         select(MistakeRecord).where(
@@ -171,7 +188,7 @@ def add_mistake(record: MistakeRecord, session: Session = Depends(get_session)):
 
 # 2. 获取某课程的所有错题 (包含题目详情，按题型排序)
 @app.get("/api/courses/{course_id}/mistakes")
-def get_course_mistakes(course_id: int, session: Session = Depends(get_session)):
+def get_course_mistakes(course_id: int, session: Session = Depends(get_current_user_session)):
     """
     获取课程的所有错题，按题型顺序返回
     返回格式：按单选 → 多选 → 填空 → 判断 → 简答 → 代码 排序
@@ -223,7 +240,7 @@ def get_course_mistakes(course_id: int, session: Session = Depends(get_session))
 
 # 3. 移除错题 (修复：加入 course_id 参数确保只删除指定课程的错题)
 @app.delete("/api/courses/{course_id}/mistakes/{question_id}")
-def remove_mistake(course_id: int, question_id: int, session: Session = Depends(get_session)):
+def remove_mistake(course_id: int, question_id: int, session: Session = Depends(get_current_user_session)):
     """
     移除指定课程的错题
     参数:
@@ -243,17 +260,19 @@ def remove_mistake(course_id: int, question_id: int, session: Session = Depends(
 
 
 @app.get("/api/courses", response_model=list[Course])
-async def get_courses(session: Session = Depends(get_session)):
+async def get_courses(session: Session = Depends(get_current_user_session)):
     courses = session.exec(select(Course)).all()
     return courses
 
-def process_course_generation(course_id: int, filename: str, session: Session):
+def process_course_generation(user_id: int, course_id: int, filename: str, session: Session):
     """
     后台任务：解析 PDF -> 生成题目 -> 存入数据库
     """
     try:
         print(f"[Task] Starting generation for course {course_id} ({filename})")
-        pdf_path = Path("data") / filename
+        from .database import get_user_db_path
+        user_db_path = get_user_db_path(user_id)
+        pdf_path = user_db_path.parent / "files" / filename
         
         # 1. 解析章节
         chapters_data = parse_chapters_from_pdf(str(pdf_path))
@@ -302,13 +321,15 @@ def process_course_generation(course_id: int, filename: str, session: Session):
         except Exception as db_e:
             print(f"[Task] Failed to update error status: {db_e}")
 
-def process_course_parsing(course_id: int, filename: str, session: Session):
+def process_course_parsing(user_id: int, course_id: int, filename: str, session: Session):
     """
     后台任务：解析 PDF -> 存入章节 -> 状态改为 parsed
     """
     try:
         print(f"[Task] Starting parsing for course {course_id} ({filename})")
-        pdf_path = Path("data") / filename
+        from .database import get_user_db_path
+        user_db_path = get_user_db_path(user_id)
+        pdf_path = user_db_path.parent / "files" / filename
         
         # 1. 解析章节
         chapters_data = parse_chapters_from_pdf(str(pdf_path))
@@ -437,7 +458,7 @@ def process_course_generation_custom(course_id: int, config: dict, session: Sess
 
 
 @app.delete("/api/courses/{course_id}")
-async def delete_course(course_id: int, session: Session = Depends(get_session)):
+async def delete_course(course_id: int, session: Session = Depends(get_current_user_session)):
     course = session.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -452,26 +473,34 @@ async def delete_course(course_id: int, session: Session = Depends(get_session))
     
     return {"status": "success", "message": "Course deleted successfully"}
 
-def run_generation_task(course_id: int, filename: str):
+def run_generation_task(user_id: int, course_id: int, filename: str):
     """
     为后台任务创建新会话的包装器
     """
-    from .database import engine
+    from .database import get_user_engine
+    engine = get_user_engine(user_id)
     with Session(engine) as session:
-        process_course_generation(course_id, filename, session)
+        process_course_generation(user_id, course_id, filename, session)
 
-def run_parsing_task(course_id: int, filename: str):
-    from .database import engine
+def run_parsing_task(user_id: int, course_id: int, filename: str):
+    from .database import get_user_engine
+    engine = get_user_engine(user_id)
     with Session(engine) as session:
-        process_course_parsing(course_id, filename, session)
+        process_course_parsing(user_id, course_id, filename, session)
 
-def run_custom_generation_task(course_id: int, config: dict):
-    from .database import engine
+def run_custom_generation_task(user_id: int, course_id: int, config: dict):
+    from .database import get_user_engine
+    engine = get_user_engine(user_id)
     with Session(engine) as session:
         process_course_generation_custom(course_id, config, session)
 
 @app.post("/api/courses/{course_id}/parse")
-async def parse_course_endpoint(course_id: int, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+async def parse_course_endpoint(
+    course_id: int, 
+    background_tasks: BackgroundTasks, 
+    session: Session = Depends(get_current_user_session),
+    user_id: int = Depends(get_current_user_id)
+):
     course = session.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -484,11 +513,17 @@ async def parse_course_endpoint(course_id: int, background_tasks: BackgroundTask
     session.add(course)
     session.commit()
     
-    background_tasks.add_task(run_parsing_task, course_id, filename)
+    background_tasks.add_task(run_parsing_task, user_id, course_id, filename)
     return {"status": "accepted", "message": "Parsing task started"}
 
 @app.post("/api/courses/{course_id}/generate")
-async def generate_course_endpoint(course_id: int, config: dict, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+async def generate_course_endpoint(
+    course_id: int, 
+    config: dict, 
+    background_tasks: BackgroundTasks, 
+    session: Session = Depends(get_current_user_session),
+    user_id: int = Depends(get_current_user_id)
+):
     course = session.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -507,11 +542,11 @@ async def generate_course_endpoint(course_id: int, config: dict, background_task
     session.add(course)
     session.commit()
     
-    background_tasks.add_task(run_custom_generation_task, course_id, config)
+    background_tasks.add_task(run_custom_generation_task, user_id, course_id, config)
     return {"status": "accepted", "message": "Generation task started"}
 
 @app.get("/api/courses/{course_id}/chapters", response_model=list[ChapterRead])
-async def get_course_chapters(course_id: int, session: Session = Depends(get_session)):
+async def get_course_chapters(course_id: int, session: Session = Depends(get_current_user_session)):
     # 使用 selectinload 高效获取测验
     from sqlalchemy.orm import selectinload
     statement = select(Chapter).where(Chapter.course_id == course_id).options(selectinload(Chapter.quizzes))
@@ -529,12 +564,12 @@ async def get_course_chapters(course_id: int, session: Session = Depends(get_ses
     return result
 
 @app.get("/api/chapters/{chapter_id}/quiz", response_model=list[QuizReadWithQuestions])
-async def get_chapter_quiz(chapter_id: int, session: Session = Depends(get_session)):
+async def get_chapter_quiz(chapter_id: int, session: Session = Depends(get_current_user_session)):
     quizzes = session.exec(select(Quiz).where(Quiz.chapter_id == chapter_id)).all()
     return quizzes
 
 @app.get("/api/chapters/{chapter_id}/export-word")
-async def export_chapter_quiz_word(chapter_id: int, include_answers: bool = True, session: Session = Depends(get_session)):
+async def export_chapter_quiz_word(chapter_id: int, include_answers: bool = True, session: Session = Depends(get_current_user_session)):
     """
     导出章节题目为 Word 文档
     """
@@ -612,7 +647,7 @@ class ReviewCodeRequest(BaseModel):
     code: str
 
 @app.post("/api/grade/short-answer")
-def api_grade_short_answer(req: GradeShortAnswerRequest, session: Session = Depends(get_session)):
+def api_grade_short_answer(req: GradeShortAnswerRequest, session: Session = Depends(get_current_user_session)):
     from .services import grade_short_answer
     question = session.get(Question, req.question_id)
     if not question:
@@ -623,7 +658,7 @@ def api_grade_short_answer(req: GradeShortAnswerRequest, session: Session = Depe
     return result
 
 @app.post("/api/grade/code")
-def api_review_code(req: ReviewCodeRequest, session: Session = Depends(get_session)):
+def api_review_code(req: ReviewCodeRequest, session: Session = Depends(get_current_user_session)):
     from .services import review_code
     question = session.get(Question, req.question_id)
     if not question:

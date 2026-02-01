@@ -6,6 +6,20 @@ const api = axios.create({
   baseURL: '/api',
 });
 
+// Request interceptor to add the auth token header to requests
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    Promise.reject(error);
+  }
+);
+
 export interface Course {
   id: number;
   title: string;
@@ -37,6 +51,39 @@ export interface Quiz {
   description: string;
   questions: Question[];
 }
+
+export interface User {
+  username: string;
+  is_guest: boolean;
+}
+
+// ==================== 认证 API ====================
+export const login = async (username: string, password: string) => {
+  //form-urlencoded
+  const params = new URLSearchParams();
+  params.append('username', username);
+  params.append('password', password);
+  const res = await api.post<{ access_token: string; token_type: string }>('/auth/token', params);
+  return res.data;
+};
+
+export const fetchMe = async () => {
+  const res = await api.get<User>('/auth/me');
+  return res.data;
+}
+
+export const guestLogin = async (oldToken?: string | null) => {
+  const res = await api.post<{ access_token: string; token_type: string }>('/auth/guest-login', {
+    old_token: oldToken
+  });
+  return res.data;
+};
+
+
+export const register = async (username: string, password: string) => {
+  const res = await api.post<{ access_token: string; token_type: string }>('/auth/register', { username, password });
+  return res.data;
+};
 
 export const fetchCourses = async () => {
   const res = await api.get<Course[]>('/courses');

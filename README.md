@@ -121,16 +121,26 @@ ai-learning-assistant/
 
 ### 2. 安装依赖
 
-**后端依赖**:
+#### Python 后端依赖
+
+**方法一：一键安装 (推荐)**
+直接安装 `requirements.txt` 中列出的所有必需依赖：
 ```bash
-pip install fastapi uvicorn sqlmodel pymupdf requests python-multipart
+pip install -r requirements.txt
 ```
 
-**前端依赖** (仅需修改前端代码时):
+**方法二：手动逐步安装**
+如果你需要手动安装主要依赖，请运行：
+```bash
+pip install fastapi uvicorn sqlmodel python-multipart python-jose[cryptography] bcrypt python-dotenv requests pymupdf python-docx
+```
+
+#### 前端依赖 (仅需修改前端代码时)
 ```bash
 cd frontend
 npm install
 ```
+
 
 ### 3. 配置 API Key
 在项目根目录创建 `.env` 文件：
